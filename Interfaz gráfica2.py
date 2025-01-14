@@ -210,7 +210,8 @@ def show_page_one():
 
     # Menú desplegable (combobox)
     report_dropdown = ttk.Combobox(frame, textvariable=report_var, state="readonly", font=("Arial", 12))
-    report_dropdown["values"] = ["Reporte 1", "Reporte 2", "Reporte 3"]  # Opciones de ejemplo
+    report_dropdown["values"] = ["Reporte de Ejemplo"]  # Modificado para mostrar solo una opción
+    report_dropdown.set("Reporte de Ejemplo")  # Establecer valor por defecto
     report_dropdown.pack(pady=5)
 
     # Botón "Siguiente"
