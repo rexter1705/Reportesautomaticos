@@ -8,6 +8,7 @@ import matplotlib.pyplot as plt
 from urllib.parse import urljoin
 import requests
 from bs4 import BeautifulSoup
+from difflib import get_close_matches
 
 # Configuración de rutas
 latex_template_path = r"C:\Users\fglruiz\Desktop\Investigacion_e_informes\Reportes\Plantilla para reportes\Plantilla\main2.tex"
@@ -179,7 +180,8 @@ def generate_bar_chart_pgf(df, x_column, y_column, output_filename):
 # Descargar bases de datos desde una página
 def obtener_link_interactivo():
     """
-    Permite al usuario seleccionar uno o más archivos Excel de la carpeta 'Bases de datos para Reportes'.
+    Permite al usuario seleccionar uno o más archivos Excel de la carpeta 'Bases de datos para Reportes'
+    utilizando el nombre del archivo con autocompletación.
     
     :return: Lista con las rutas completas de los archivos seleccionados
     """
@@ -193,46 +195,58 @@ def obtener_link_interactivo():
             print("Error: No se encontró la carpeta 'Bases de datos para Reportes' en el escritorio.")
             return []
             
-        archivos_encontrados = []
+        archivos_encontrados = {}
         
         # Buscar todos los archivos Excel en la carpeta y subcarpetas
         for root, dirs, files in os.walk(base_path):
             for file in files:
                 if file.lower().endswith(('.xls', '.xlsx')):
                     ruta_completa = os.path.join(root, file)
-                    archivos_encontrados.append(ruta_completa)
+                    # Generar un identificador único para evitar conflictos
+                    clave = f"{os.path.basename(root)}/{file}"
+                    archivos_encontrados[clave] = ruta_completa
 
         if not archivos_encontrados:
-            print(f"No se encontraron archivos Excel en la carpeta.")
+            print("No se encontraron archivos Excel en la carpeta.")
             return []
 
-        # Mostrar los archivos encontrados
-        print("\nArchivos Excel disponibles:")
-        for idx, ruta in enumerate(archivos_encontrados, start=1):
-            nombre_archivo = os.path.basename(ruta)
-            nombre_carpeta = os.path.basename(os.path.dirname(ruta))
-            print(f"[{idx}] {nombre_carpeta}/{nombre_archivo}")
-
+        # Extraer los nombres de los archivos
+        nombres_archivos = list(archivos_encontrados.keys())
+        
         # Seleccionar archivos
         archivos_seleccionados = []
         while True:
-            seleccion = input("\nSeleccione los números de los archivos (separados por comas) o 'q' para terminar: ").strip()
+            entrada_usuario = input("\nIngrese el nombre del archivo (o parte del nombre) o 'q' para terminar: ").strip()
             
-            if seleccion.lower() == 'q':
+            if entrada_usuario.lower() == 'q':
                 break
 
+            # Autocompletación: buscar coincidencias cercanas
+            coincidencias = get_close_matches(entrada_usuario, nombres_archivos, n=5, cutoff=0.2)
+            if not coincidencias:
+                print(f"No se encontraron coincidencias para: {entrada_usuario}")
+                continue
+            
+            print("\nCoincidencias encontradas:")
+            for idx, opcion in enumerate(coincidencias, start=1):
+                print(f"[{idx}] {opcion}")
+            
+            seleccion = input("Seleccione el número correspondiente o 'c' para cancelar: ").strip()
+            if seleccion.lower() == 'c':
+                continue
+            
             try:
-                indices = [int(x.strip()) for x in seleccion.split(',')]
-                for idx in indices:
-                    if 1 <= idx <= len(archivos_encontrados):
-                        archivo = archivos_encontrados[idx - 1]
-                        if archivo not in archivos_seleccionados:
-                            archivos_seleccionados.append(archivo)
-                            print(f"Archivo seleccionado: {os.path.basename(archivo)}")
-                    else:
-                        print(f"Índice {idx} fuera de rango")
+                idx = int(seleccion) - 1
+                if 0 <= idx < len(coincidencias):
+                    clave = coincidencias[idx]
+                    archivo = archivos_encontrados[clave]
+                    if archivo not in archivos_seleccionados:
+                        archivos_seleccionados.append(archivo)
+                        print(f"Archivo seleccionado: {clave}")
+                else:
+                    print("Selección fuera de rango")
             except ValueError:
-                print("Por favor, ingrese números válidos separados por comas")
+                print("Por favor, ingrese un número válido")
 
         return archivos_seleccionados
 
