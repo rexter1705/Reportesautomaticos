@@ -359,11 +359,10 @@ def compile_latex(updated_latex_path, output_directory):
 def main():
     ensure_directory(output_directory)
 
-    # Descargar bases de datos
-    base_url = "https://banguat.gob.gt/page/estadisticas-macroeconomicas"
-    downloaded_files = obtener_link_interactivo(base_url)
+    # Obtener archivos Excel seleccionados
+    downloaded_files = obtener_link_interactivo()
     if not downloaded_files:
-        print("No se pudieron descargar las bases de datos.")
+        print("No se seleccionaron archivos para procesar.")
         return
 
     all_sections = []
@@ -372,9 +371,9 @@ def main():
     # Modificar la estructura de datos para organizar por base de datos
     database_sections = {}
     
-    # Procesar cada archivo descargado
+    # Procesar cada archivo seleccionado
     for downloaded_file in downloaded_files:
-        database_name = os.path.basename(downloaded_file).replace('.xlsx', '')
+        database_name = os.path.basename(downloaded_file).replace('.xlsx', '').replace('.xls', '')
         database_sections[database_name] = []
         print(f"\nProcesando archivo: {database_name}")
         
