@@ -20,47 +20,20 @@ def ensure_directory(directory):
 
 # Obtener nombres de hojas en un archivo Excel
 def obtener_nombres_hojas(ruta_archivo):
-    """
-    Detecta los nombres de las hojas en un archivo Excel (xls o xlsx).
-    Permite al usuario seleccionar las hojas con las que desea trabajar.
-
-    :param ruta_archivo: Ruta al archivo Excel.
-    :return: Lista de hojas seleccionadas por el usuario.
-    """
+    """Modificada para retornar todas las hojas sin interacción."""
     if not os.path.exists(ruta_archivo):
         raise FileNotFoundError(f"El archivo '{ruta_archivo}' no existe.")
 
-    # Detectar extensión del archivo
     extension = os.path.splitext(ruta_archivo)[1].lower()
 
     if extension == ".xlsx":
         workbook = load_workbook(filename=ruta_archivo, read_only=True)
-        hojas = workbook.sheetnames
+        return workbook.sheetnames
     elif extension == ".xls":
         workbook = xlrd.open_workbook(ruta_archivo)
-        hojas = workbook.sheet_names()
+        return workbook.sheet_names()
     else:
         raise ValueError("Formato de archivo no soportado. Use un archivo .xls o .xlsx.")
-
-    # Mostrar opciones al usuario
-    if len(hojas) == 1:
-        print(f"El archivo contiene solo una hoja: '{hojas[0]}'. Esta será seleccionada automáticamente.")
-        return hojas
-    else:
-        print("Las hojas disponibles son:")
-        for idx, hoja in enumerate(hojas, start=1):
-            print(f"{idx}. {hoja}")
-
-        seleccion = input("Ingrese los números de las hojas que desea seleccionar, separados por comas: ")
-        indices_seleccionados = [int(x.strip()) for x in seleccion.split(",") if x.strip().isdigit()]
-
-        hojas_seleccionadas = [hojas[i - 1] for i in indices_seleccionados if 1 <= i <= len(hojas)]
-
-        if not hojas_seleccionadas:
-            print("No se seleccionó ninguna hoja válida. Inténtelo de nuevo.")
-            return obtener_nombres_hojas(ruta_archivo)
-
-        return hojas_seleccionadas
 
 # Seleccionar columnas de un DataFrame
 def seleccionar_columnas(ruta_archivo, hoja, fila_titulos=None):
