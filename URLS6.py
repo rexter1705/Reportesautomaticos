@@ -177,14 +177,22 @@ def generate_bar_chart_pgf(df, x_column, y_column, output_filename):
         print(f"Error generating bar chart PGF: {e}")
 
 # Descargar bases de datos desde una página
-def obtener_link_interactivo(base_path=r"C:\Users\fglruiz\Desktop\Bases de datos para Reportes"):
+def obtener_link_interactivo():
     """
-    Permite al usuario seleccionar uno o más archivos Excel de una carpeta específica.
+    Permite al usuario seleccionar uno o más archivos Excel de la carpeta 'Bases de datos para Reportes'.
     
-    :param base_path: Ruta base donde buscar los archivos Excel
     :return: Lista con las rutas completas de los archivos seleccionados
     """
     try:
+        # Construir la ruta a la carpeta en el escritorio
+        desktop_path = os.path.join(os.path.expanduser('~'), 'Desktop')
+        base_path = os.path.join(desktop_path, 'Bases de datos para Reportes')
+        
+        # Verificar si la carpeta existe
+        if not os.path.exists(base_path):
+            print("Error: No se encontró la carpeta 'Bases de datos para Reportes' en el escritorio.")
+            return []
+            
         archivos_encontrados = []
         
         # Buscar todos los archivos Excel en la carpeta y subcarpetas
@@ -195,7 +203,7 @@ def obtener_link_interactivo(base_path=r"C:\Users\fglruiz\Desktop\Bases de datos
                     archivos_encontrados.append(ruta_completa)
 
         if not archivos_encontrados:
-            print(f"No se encontraron archivos Excel en {base_path}")
+            print(f"No se encontraron archivos Excel en la carpeta.")
             return []
 
         # Mostrar los archivos encontrados
