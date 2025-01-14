@@ -61,22 +61,6 @@ def obtener_nombres_hojas(ruta_archivo):
 
         return hojas_seleccionadas
 
-# Detectar fila de encabezados en un DataFrame
-def detectar_encabezados(df, max_filas=10):
-    """
-    Detecta automáticamente la fila que probablemente contiene los encabezados.
-    
-    :param df: DataFrame con los datos iniciales.
-    :param max_filas: Número máximo de filas a inspeccionar.
-    :return: Índice de la fila más probable para los encabezados.
-    """
-    for i in range(min(max_filas, len(df))):
-        # Heurística: más de la mitad de las celdas contienen texto no vacío
-        fila = df.iloc[i]
-        if fila.dropna().apply(lambda x: isinstance(x, str)).mean() > 0.5:
-            return i
-    return 0  # Por defecto, asumir la primera fila
-
 # Seleccionar columnas de un DataFrame
 def seleccionar_columnas(ruta_archivo, hoja, fila_titulos=None):
     """
@@ -84,24 +68,15 @@ def seleccionar_columnas(ruta_archivo, hoja, fila_titulos=None):
 
     :param ruta_archivo: Ruta al archivo de Excel.
     :param hoja: Nombre o índice de la hoja a leer.
-    :param fila_titulos: Número de fila (base 0) donde están los títulos de las columnas (si no se especifica, se detecta automáticamente).
+    :param fila_titulos: Número de fila (base 0) donde están los títulos de las columnas.
     :return: DataFrame con las columnas seleccionadas por el usuario.
     """
     try:
-        # Leer el archivo sin encabezados
-        df = pd.read_excel(ruta_archivo, sheet_name=hoja, header=None)
-
-        # Detectar encabezados si no se proporciona fila_titulos
+        # Solicitar al usuario la fila de encabezados si no se proporciona
         if fila_titulos is None:
-            fila_titulos = detectar_encabezados(df)
-            print(f"Fila de encabezados detectada automáticamente: {fila_titulos + 1} (basada en 1).")
+            fila_titulos = int(input("Por favor, ingresa el número de fila que contiene los encabezados (base 1): ")) - 1
 
-            # Confirmar con el usuario o permitir corrección manual
-            confirmacion = input("¿Es correcta esta fila para los encabezados? (s/n): ").strip().lower()
-            if confirmacion != 's':
-                fila_titulos = int(input("Por favor, ingresa manualmente el número de fila (base 1) que contiene los encabezados: ")) - 1
-
-        # Leer nuevamente el archivo con la fila de encabezados detectada
+        # Leer el archivo con la fila de encabezados especificada
         df = pd.read_excel(ruta_archivo, sheet_name=hoja, header=fila_titulos)
 
         # Convertir los encabezados a cadenas para evitar problemas con números
