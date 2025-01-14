@@ -177,91 +177,56 @@ def generate_bar_chart_pgf(df, x_column, y_column, output_filename):
         print(f"Error generating bar chart PGF: {e}")
 
 # Descargar bases de datos desde una página
-def obtener_link_interactivo(base_url):
+def obtener_link_interactivo(base_path=r"C:\Users\fglruiz\Desktop\Bases de datos para Reportes"):
+    """
+    Permite al usuario seleccionar uno o más archivos Excel de una carpeta específica.
+    
+    :param base_path: Ruta base donde buscar los archivos Excel
+    :return: Lista con las rutas completas de los archivos seleccionados
+    """
     try:
-        # Configurar la carpeta en el escritorio
-        desktop_path = os.path.join(os.path.expanduser("~"), "Desktop")
-        database_folder = os.path.join(desktop_path, "Bases de Datos")
-        os.makedirs(database_folder, exist_ok=True)
-
         archivos_encontrados = []
-        links_pendientes = [base_url]
-        visitados = set()
-
-        while links_pendientes:
-            current_url = links_pendientes.pop(0)
-            if current_url in visitados:
-                continue
-
-            visitados.add(current_url)
-            print(f"\nAccediendo a: {current_url}")
-
-            try:
-                response = requests.get(current_url)
-                response.raise_for_status()
-                soup = BeautifulSoup(response.content, 'html.parser')
-
-                # Extraer título del contenedor <h1 class="page-title">
-                titulo = soup.find('h1', class_='page-title')
-                titulo_texto = titulo.text.strip() if titulo else "Archivo sin título"
-
-                # Buscar enlaces dentro de la página actual
-                contenedor = soup.find('div', {'id': 'block-solucionweb-content', 'class': 'contenido block block-system block-system-main-block'})
-                if not contenedor:
-                    print("No se encontró el contenedor especificado en esta página.")
-                    continue
-
-                for link in contenedor.find_all('a', href=True):
-                    href = link['href']
-                    absolute_url = urljoin(current_url, href)
-
-                    if absolute_url.lower().endswith(('.xls', '.xlsx')):
-                        archivos_encontrados.append((titulo_texto, absolute_url))
-                    elif absolute_url not in visitados:
-                        links_pendientes.append(absolute_url)
-
-            except Exception as e:
-                print(f"Error al procesar {current_url}: {e}")
+        
+        # Buscar todos los archivos Excel en la carpeta y subcarpetas
+        for root, dirs, files in os.walk(base_path):
+            for file in files:
+                if file.lower().endswith(('.xls', '.xlsx')):
+                    ruta_completa = os.path.join(root, file)
+                    archivos_encontrados.append(ruta_completa)
 
         if not archivos_encontrados:
-            print("No se encontraron archivos Excel en los enlaces explorados.")
+            print(f"No se encontraron archivos Excel en {base_path}")
             return []
 
-        # Mostrar menú con los archivos encontrados
+        # Mostrar los archivos encontrados
         print("\nArchivos Excel disponibles:")
-        for idx, (titulo, url) in enumerate(archivos_encontrados, start=1):
-            print(f"[{idx}] {titulo} -> {url}")
+        for idx, ruta in enumerate(archivos_encontrados, start=1):
+            nombre_archivo = os.path.basename(ruta)
+            nombre_carpeta = os.path.basename(os.path.dirname(ruta))
+            print(f"[{idx}] {nombre_carpeta}/{nombre_archivo}")
 
-        # Seleccionar archivos para descargar
-        seleccionados = []
+        # Seleccionar archivos
+        archivos_seleccionados = []
         while True:
-            user_input = input("\nSeleccione archivos para descargar (números separados por comas, o 'q' para salir): ").strip()
-            if user_input.lower() == 'q':
+            seleccion = input("\nSeleccione los números de los archivos (separados por comas) o 'q' para terminar: ").strip()
+            
+            if seleccion.lower() == 'q':
                 break
 
             try:
-                indices = [int(x.strip()) for x in user_input.split(',')]
+                indices = [int(x.strip()) for x in seleccion.split(',')]
                 for idx in indices:
                     if 1 <= idx <= len(archivos_encontrados):
-                        titulo, url = archivos_encontrados[idx - 1]
-                        file_name = os.path.basename(url)
-                        file_path = os.path.join(database_folder, file_name)
-
-                        print(f"\nDescargando: {file_name}")
-                        try:
-                            file_response = requests.get(url)
-                            file_response.raise_for_status()
-                            with open(file_path, 'wb') as file:
-                                file.write(file_response.content)
-                            print(f"Archivo guardado en: {file_path}")
-                            seleccionados.append(file_path)
-                        except Exception as e:
-                            print(f"Error al descargar {file_name}: {e}")
-
+                        archivo = archivos_encontrados[idx - 1]
+                        if archivo not in archivos_seleccionados:
+                            archivos_seleccionados.append(archivo)
+                            print(f"Archivo seleccionado: {os.path.basename(archivo)}")
+                    else:
+                        print(f"Índice {idx} fuera de rango")
             except ValueError:
-                print("Entrada inválida. Por favor, ingrese números separados por comas.")
+                print("Por favor, ingrese números válidos separados por comas")
 
-        return seleccionados
+        return archivos_seleccionados
 
     except Exception as e:
         print(f"Error: {e}")
