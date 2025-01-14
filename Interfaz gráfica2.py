@@ -1,5 +1,6 @@
 import tkinter as tk
 from tkinter import ttk
+import os
 
 data_selection = {}  # Diccionario para almacenar las selecciones de bases y gráficos
 
@@ -160,22 +161,61 @@ def show_page_two():
     section_label = tk.Label(root, text="Selección de bases de datos", font=("Arial", 16, "bold"), bg="#3366ff", fg="white", width=30)
     section_label.grid(row=1, column=0, columnspan=2, pady=20)
 
-    # Subtítulo
-    subtitle_label = tk.Label(root, text="Chequea todas las bases de datos que deseas utilizar", font=("Arial", 12), bg="#ff4500", fg="white")
-    subtitle_label.grid(row=2, column=0, columnspan=2, pady=10, sticky="w")
+    # Frame para la búsqueda y selección de archivos
+    search_frame = tk.Frame(root, bg="#ff4500")
+    search_frame.grid(row=2, column=0, columnspan=2, padx=20, pady=10, sticky="nsew")
 
-    # Lista de bases de datos
-    db_frame = tk.Frame(root, bg="#ff4500")
-    db_frame.grid(row=3, column=0, columnspan=2, padx=20, pady=10, sticky="w")
+    # Entrada de búsqueda
+    search_label = tk.Label(search_frame, text="Buscar archivo:", font=("Arial", 12), bg="#ff4500", fg="white")
+    search_label.grid(row=0, column=0, pady=5, padx=5, sticky="w")
 
-    databases = ["Base de datos 1", "Base de datos 2", "Base de datos 3", "Base de datos 4", "Base de datos 5", "Base de datos 6"]
-    db_vars = []
-    for db in databases:
-        var = tk.BooleanVar()
-        db_vars.append(var)
-        tk.Checkbutton(db_frame, text=db, variable=var, font=("Arial", 12), 
-                      bg="#ff4500", fg="white", selectcolor="#ff4500",
-                      activebackground="#ff4500", activeforeground="white").pack(anchor="w")
+    search_entry = tk.Entry(search_frame, font=("Arial", 12), width=40)
+    search_entry.grid(row=0, column=1, pady=5, padx=5)
+
+    # Lista de archivos encontrados
+    files_listbox = tk.Listbox(search_frame, font=("Arial", 12), width=50, height=8)
+    files_listbox.grid(row=1, column=0, columnspan=2, pady=5, padx=5)
+
+    # Lista de archivos seleccionados
+    selected_label = tk.Label(search_frame, text="Archivos seleccionados:", font=("Arial", 12), bg="#ff4500", fg="white")
+    selected_label.grid(row=2, column=0, columnspan=2, pady=5, padx=5, sticky="w")
+
+    selected_files_listbox = tk.Listbox(search_frame, font=("Arial", 12), width=50, height=4)
+    selected_files_listbox.grid(row=3, column=0, columnspan=2, pady=5, padx=5)
+
+    def search_files():
+        search_term = search_entry.get().strip()
+        files_listbox.delete(0, tk.END)
+        
+        # Construir la ruta a la carpeta en el escritorio
+        desktop_path = os.path.join(os.path.expanduser('~'), 'Desktop')
+        base_path = os.path.join(desktop_path, 'Bases de datos para Reportes')
+        
+        if not os.path.exists(base_path):
+            files_listbox.insert(tk.END, "No se encontró la carpeta 'Bases de datos para Reportes'")
+            return
+
+        # Buscar archivos Excel que coincidan con el término de búsqueda
+        for root, dirs, files in os.walk(base_path):
+            for file in files:
+                if file.lower().endswith(('.xls', '.xlsx')) and search_term.lower() in file.lower():
+                    relative_path = os.path.relpath(root, base_path)
+                    display_path = os.path.join(relative_path, file)
+                    files_listbox.insert(tk.END, display_path)
+
+    def add_selected_file():
+        selection = files_listbox.curselection()
+        if selection:
+            file_path = files_listbox.get(selection[0])
+            if file_path not in selected_files_listbox.get(0, tk.END):
+                selected_files_listbox.insert(tk.END, file_path)
+
+    # Botones de búsqueda y selección
+    search_button = tk.Button(search_frame, text="Buscar", command=search_files, bg="#ffcc66", fg="#333")
+    search_button.grid(row=0, column=2, pady=5, padx=5)
+
+    add_button = tk.Button(search_frame, text="Agregar", command=add_selected_file, bg="#ffcc66", fg="#333")
+    add_button.grid(row=1, column=2, pady=5, padx=5)
 
     # Botones de navegación
     prev_button = tk.Button(root, text="Anterior", font=("Arial", 12), bg="#ffcc66", fg="#333", command=show_page_one)
