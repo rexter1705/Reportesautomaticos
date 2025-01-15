@@ -18,6 +18,9 @@ class FirstPage(QWidget):
         self.list_widget = QListWidget()
         self.next_button = QPushButton("Siguiente")
         self.status_label = QLabel("Cargando plantillas...")
+        
+        # Añadir diccionario para almacenar las plantillas
+        self.templates = {}  # Para almacenar {nombre: ruta}
 
         self.layout.addWidget(QLabel("Selecciona una Plantilla:"))
         self.layout.addWidget(self.list_widget)
@@ -25,10 +28,7 @@ class FirstPage(QWidget):
         self.layout.addWidget(self.status_label)
         self.setLayout(self.layout)
 
-        # Botón para avanzar a la segunda página
         self.next_button.clicked.connect(self.go_to_next_page)
-
-        # Cargar plantillas desde el backend
         self.load_templates()
 
     def load_templates(self):
@@ -37,6 +37,7 @@ class FirstPage(QWidget):
             if response.status_code == 200:
                 templates = response.json()
                 for template in templates:
+                    self.templates[template["name"]] = template["path"]
                     self.list_widget.addItem(template["name"])
                 self.status_label.setText("Plantillas cargadas correctamente.")
             else:
@@ -47,7 +48,14 @@ class FirstPage(QWidget):
     def go_to_next_page(self):
         selected_item = self.list_widget.currentItem()
         if selected_item:
-            self.parent().selected_template = selected_item.text()
+            template_name = selected_item.text()
+            template_path = self.templates[template_name]
+            
+            # Obtener referencia a MainWindow y guardar la ruta completa
+            main_window = self.parent().parent()
+            main_window.selected_template = template_path
+            
+            print(f"Plantilla seleccionada: {template_path}")  # Para depuración
             self.parent().setCurrentIndex(1)
         else:
             QMessageBox.warning(self, "Advertencia", "Por favor, selecciona una plantilla.")
@@ -180,19 +188,33 @@ class ThirdPage(QWidget):
             return
 
         try:
+            # Asegurar que header_row tenga un valor por defecto
+            header_row = getattr(self, 'selected_header_row', 0)
+            if header_row is None:
+                header_row = 0
+                
+            print(f"Enviando solicitud con:")
+            print(f"- Archivo: {self.selected_file}")
+            print(f"- Hoja: {self.selected_sheet}")
+            print(f"- Header row: {header_row}")
+            
             response = requests.post(f"{BACKEND_URL}/preview-sheet", json={
                 'file_path': self.selected_file,
-                'sheet_name': self.selected_sheet,
-                'header_row': self.selected_header_row
+                'sheet_name': str(self.selected_sheet),
+                'header_row': header_row  # Ahora siempre enviará un número
             })
             
             if response.status_code == 200:
                 data = response.json()
                 self.show_table_from_data(data['columns'], data['data'])
             else:
-                QMessageBox.warning(self, "Error", "No se pudo cargar la hoja.")
+                error_msg = response.json().get('error', 'Error desconocido')
+                QMessageBox.warning(self, "Error", f"No se pudo cargar la hoja. Error: {error_msg}")
+                print(f"Error response: {response.text}")
         except Exception as e:
-            QMessageBox.warning(self, "Error", f"No se pudo cargar la hoja: {e}")
+            import traceback
+            print(traceback.format_exc())
+            QMessageBox.warning(self, "Error", f"No se pudo cargar la hoja: {str(e)}")
 
     def show_table(self, df):
         """Muestra un DataFrame en la tabla de vista previa."""
@@ -211,7 +233,7 @@ class ThirdPage(QWidget):
         self.table_preview.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
 
     def select_header_row(self):
-        """Selecciona la fila de encabezados para usar en el procesamiento."""
+        """Selecciona la fila de encabezados y navega a la siguiente página."""
         try:
             header_row = int(self.header_input.text()) - 1
             if header_row < 0:
@@ -219,14 +241,57 @@ class ThirdPage(QWidget):
                 return
 
             self.selected_header_row = header_row
-            QMessageBox.information(
-                self, "Fila Seleccionada", f"Fila de encabezados seleccionada: {header_row + 1}"
+            
+            # Leer los nombres de las columnas con el encabezado seleccionado
+            df = pd.read_excel(
+                self.selected_file,
+                sheet_name=self.selected_sheet,
+                header=header_row,
+                nrows=1  # Solo leer la fila de encabezados
             )
+            
+            # Almacenar los nombres de las columnas (convertidos a string)
+            self.column_names = [str(col) for col in df.columns.tolist()]
+            
+            # Configurar la cuarta página con los nombres de las columnas
+            fourth_page = self.parent().widget(3)  # Obtener la cuarta página
+            fourth_page.load_sheet(
+                self.selected_file,
+                self.selected_sheet,
+                self.column_names
+            )
+            
+            QMessageBox.information(
+                self, "Fila Seleccionada", 
+                f"Fila de encabezados seleccionada: {header_row + 1}\n"
+                f"Columnas detectadas: {', '.join(self.column_names)}"
+            )
+            
+            # Navegar a la cuarta página
+            self.parent().setCurrentIndex(3)
+            
         except ValueError:
             QMessageBox.warning(self, "Error", "Por favor ingresa un número válido.")
 
     def go_to_previous_page(self):
         self.parent().setCurrentIndex(1)
+
+    def show_table_from_data(self, columns, data):
+        """Muestra los datos recibidos del backend en la tabla."""
+        self.table_preview.setColumnCount(len(columns))
+        self.table_preview.setRowCount(len(data))
+        
+        # Establecer encabezados
+        self.table_preview.setHorizontalHeaderLabels(columns)
+        
+        # Llenar datos
+        for row_idx, row_data in enumerate(data):
+            for col_idx, column in enumerate(columns):
+                item = QTableWidgetItem(str(row_data[column]))
+                self.table_preview.setItem(row_idx, col_idx, item)
+        
+        # Ajustar el ancho de las columnas
+        self.table_preview.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
 
 class FourthPage(QWidget):
     def __init__(self, parent=None):
@@ -270,24 +335,17 @@ class FourthPage(QWidget):
         self.selected_graphs = []
         self.selected_columns = {}
 
-    def load_sheet(self, file_path, sheet_name, header_row):
-        """Carga la hoja seleccionada en la tabla y configura las columnas."""
+    def load_sheet(self, file_path, sheet_name, column_names):
+        """Carga la información de la hoja y configura los dropdowns de columnas."""
         self.selected_file = file_path
         self.selected_sheet = sheet_name
-
         self.sheet_label.setText(f"Hoja seleccionada: {sheet_name}")
-        try:
-            # Leer la hoja con la fila de encabezados seleccionada
-            df = pd.read_excel(file_path, sheet_name=sheet_name, header=header_row)
-            self.show_table(df)
-
-            # Cargar nombres de columnas en los ComboBox
-            self.x_column_dropdown.clear()
-            self.y_column_dropdown.clear()
-            self.x_column_dropdown.addItems(df.columns)
-            self.y_column_dropdown.addItems(df.columns)
-        except Exception as e:
-            QMessageBox.warning(self, "Error", f"No se pudo cargar la hoja: {e}")
+        
+        # Actualizar los dropdowns con los nombres de las columnas
+        self.x_column_dropdown.clear()
+        self.y_column_dropdown.clear()
+        self.x_column_dropdown.addItems(column_names)
+        self.y_column_dropdown.addItems(column_names)
 
     def show_table(self, df):
         """Muestra un DataFrame en la tabla de vista previa."""

@@ -78,14 +78,45 @@ def preview_sheet():
         data = request.json
         file_path = data['file_path']
         sheet_name = data['sheet_name']
-        header_row = data.get('header_row', 0)
+        header_row = data.get('header_row', 0) if data.get('header_row') is not None else 0
         
-        df = pd.read_excel(file_path, sheet_name=sheet_name, header=header_row, nrows=20)
+        print(f"Intentando cargar archivo: {file_path}")
+        print(f"Hoja seleccionada: {sheet_name}")
+        print(f"Fila de encabezado: {header_row}")
+        
+        # Verificar si el archivo existe
+        if not os.path.exists(file_path):
+            print(f"El archivo no existe: {file_path}")
+            return jsonify({'error': f"El archivo no existe: {file_path}"}), 404
+        
+        # Determinar el motor basado en la extensión del archivo
+        file_extension = os.path.splitext(file_path)[1].lower()
+        engine = 'xlrd' if file_extension == '.xls' else 'openpyxl'
+        
+        print(f"Usando motor: {engine} para archivo {file_extension}")
+        
+        # Leer el Excel especificando el nombre de la hoja como string
+        df = pd.read_excel(
+            file_path, 
+            sheet_name=str(sheet_name),
+            header=int(header_row),
+            nrows=20,
+            engine=engine
+        )
+        
+        print(f"DataFrame cargado exitosamente. Columnas: {df.columns.tolist()}")
+        
+        # Convertir las columnas a string para evitar problemas de serialización
+        df.columns = df.columns.astype(str)
+        
         return jsonify({
             'columns': df.columns.tolist(),
             'data': df.to_dict('records')
         })
     except Exception as e:
+        print(f"Error detallado en preview_sheet: {str(e)}")
+        import traceback
+        print(traceback.format_exc())  # Esto imprimirá el traceback completo
         return jsonify({'error': str(e)}), 500
 
 @app.route('/generate-report', methods=['POST'])
