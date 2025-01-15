@@ -1,5 +1,6 @@
 import tkinter as tk
 from tkinter import ttk
+from tkinter import messagebox
 from URLS6 import (
     obtener_nombres_hojas,
     generate_time_series_pgf,
@@ -11,17 +12,18 @@ import os
 import pandas as pd
 
 data_selection = {
-    # 'base_name': {
-    #     'file_path': str,
-    #     'sheets': [{
-    #         'name': str,
-    #         'columns': {
-    #             'x': str,
-    #             'y': str
-    #         },
-    #         'graphs': ['time_series', 'bar_chart']
-    #     }]
-    # }
+    'base_name': {
+        'file_path': str,
+        'header_row': int,
+        'sheets': [{
+            'name': str,
+            'columns': {
+                'x': str,
+                'y': str
+            },
+            'graphs': ['time_series', 'bar_chart']
+        }]
+    }
 }
 
 def show_page_five():
@@ -200,47 +202,101 @@ def show_page_four():
     save_button.grid(row=3, column=0, columnspan=2, pady=10)
 
 def show_page_three():
-    """Aquí inicia la tercera página"""
+    """Tercera página: visualización del Excel y selección de encabezados"""
     for widget in root.winfo_children():
-        widget.destroy()  # Elimina los widgets de la página actual
+        widget.destroy()
 
     # Título de la aplicación
     title_label = tk.Label(root, text="Generador de reportes", font=("Arial", 18, "bold"), bg="#f7f6e7", fg="#ff6600")
     title_label.grid(row=0, column=0, columnspan=2, pady=10, sticky="w")
 
-    # Reporte actual
-    report_label = tk.Label(root, text="Base actual:", font=("Arial", 12), bg="#f7f6e7", fg="#666")
+    # Base actual y manejo seguro de la selección actual
+    current_file = None
+    if data_selection:
+        current_file = next(iter(data_selection))  # Obtiene la primera clave de manera segura
+    
+    report_label = tk.Label(root, text=f"Base actual: {current_file if current_file else 'No hay archivo seleccionado'}", 
+                           font=("Arial", 12), bg="#f7f6e7", fg="#666")
     report_label.grid(row=0, column=1, padx=10, sticky="e")
 
     # Título de sección
-    section_label = tk.Label(root, text="Selección de encabezados y columnas", font=("Arial", 16, "bold"), bg="#3366ff", fg="white", width=30)
+    section_label = tk.Label(root, text="Visualización de datos y selección de encabezados", 
+                           font=("Arial", 16, "bold"), bg="#3366ff", fg="white", width=30)
     section_label.grid(row=1, column=0, columnspan=2, pady=20)
 
-    # Placeholder para la tabla
-    table_label = tk.Label(root, text="Base de datos 1", font=("Arial", 14, "bold"), bg="#f7f6e7", fg="#333")
-    table_label.grid(row=2, column=0, columnspan=2, pady=10)
+    # Frame para la tabla
+    table_frame = tk.Frame(root, bg="#f7f6e7")
+    table_frame.grid(row=2, column=0, columnspan=2, padx=20, pady=10, sticky="nsew")
 
-    table_frame = tk.Frame(root, bg="#3366ff")  # Placeholder para funcionalidad
-    table_frame.grid(row=3, column=0, columnspan=2, padx=20, pady=10, sticky="nsew")
-    for i in range(5):  # Tabla ficticia (5 filas x 5 columnas)
-        for j in range(5):
-            cell = tk.Label(table_frame, text=" ", font=("Arial", 12), width=10, height=2, relief="solid", bg="#f7f6e7")
-            cell.grid(row=i, column=j, padx=1, pady=1)
+    def load_excel_preview():
+        if not data_selection or not current_file:
+            return
+        
+        try:
+            file_path = data_selection[current_file]['file_path']
+            if not os.path.exists(file_path):
+                messagebox.showerror("Error", "No se encuentra el archivo Excel")
+                return
+                
+            # Leer las primeras 10 filas del Excel
+            df = pd.read_excel(file_path, nrows=10)
+            
+            # Limpiar el frame antes de agregar nuevos widgets
+            for widget in table_frame.winfo_children():
+                widget.destroy()
+            
+            # Crear encabezados de columnas
+            for j, col in enumerate(df.columns):
+                header = tk.Label(table_frame, text=str(col), font=("Arial", 10, "bold"), 
+                                bg="#3366ff", fg="white", relief="solid", width=15)
+                header.grid(row=0, column=j, padx=1, pady=1)
 
-    # Dropdown para seleccionar encabezado
-    header_label = tk.Label(root, text="Selecciona la fila de encabezados", font=("Arial", 12), bg="#f7f6e7", fg="#333")
-    header_label.grid(row=4, column=0, pady=10, sticky="w", padx=20)
+            # Mostrar datos
+            for i in range(len(df)):
+                for j, value in enumerate(df.iloc[i]):
+                    cell = tk.Label(table_frame, text=str(value), font=("Arial", 10),
+                                  bg="#f7f6e7", relief="solid", width=15)
+                    cell.grid(row=i+1, column=j, padx=1, pady=1)
+                    
+        except Exception as e:
+            messagebox.showerror("Error", f"Error al cargar el archivo Excel: {str(e)}")
 
-    header_dropdown = ttk.Combobox(root, state="readonly", font=("Arial", 12))
-    header_dropdown["values"] = ["Fila 1", "Fila 2", "Fila 3", "Fila 4", "Fila 5"]  # Opciones de ejemplo
-    header_dropdown.grid(row=4, column=1, pady=10, sticky="e", padx=20)
+    # Cargar vista previa del Excel
+    load_excel_preview()
+
+    # Frame para selección de encabezados
+    header_frame = tk.Frame(root, bg="#f7f6e7")
+    header_frame.grid(row=3, column=0, columnspan=2, pady=20)
+
+    header_label = tk.Label(header_frame, text="Selecciona la fila de encabezados:", 
+                          font=("Arial", 12), bg="#f7f6e7", fg="#333")
+    header_label.pack(side="left", padx=10)
+
+    header_var = tk.StringVar()
+    header_entry = tk.Entry(header_frame, textvariable=header_var, width=5)
+    header_entry.pack(side="left", padx=5)
+
+    def save_header_selection():
+        try:
+            header_row = int(header_var.get()) - 1  # Convertir a base 0
+            if current_file in data_selection:
+                data_selection[current_file]['header_row'] = header_row
+                messagebox.showinfo("Éxito", "Fila de encabezados guardada correctamente")
+        except ValueError:
+            messagebox.showerror("Error", "Por favor ingrese un número válido")
+
+    save_button = tk.Button(header_frame, text="Guardar selección", 
+                          command=save_header_selection, bg="#ff6600", fg="white")
+    save_button.pack(side="left", padx=10)
 
     # Botones de navegación
-    prev_button = tk.Button(root, text="Anterior", font=("Arial", 12), bg="#ffcc66", fg="#333", command=show_page_two)
-    prev_button.grid(row=5, column=0, pady=20, sticky="w", padx=20)
+    prev_button = tk.Button(root, text="Anterior", command=show_page_two, 
+                          bg="#ffcc00", fg="#333", font=("Arial", 12))
+    prev_button.grid(row=4, column=0, pady=20, sticky="w", padx=20)
 
-    next_button = tk.Button(root, text="Siguiente", font=("Arial", 12), bg="#ffcc66", fg="#333", command=show_page_four)
-    next_button.grid(row=5, column=1, pady=20, sticky="e", padx=20)
+    next_button = tk.Button(root, text="Siguiente", command=show_page_four, 
+                          bg="#ffcc00", fg="#333", font=("Arial", 12))
+    next_button.grid(row=4, column=1, pady=20, sticky="e", padx=20)
 
 def show_page_two():
     """Aquí inicia la segunda página"""
@@ -259,22 +315,80 @@ def show_page_two():
     section_label = tk.Label(root, text="Selección de bases de datos", font=("Arial", 16, "bold"), bg="#3366ff", fg="white", width=30)
     section_label.grid(row=1, column=0, columnspan=2, pady=20)
 
-    # Subtítulo
-    subtitle_label = tk.Label(root, text="Chequea todas las bases de datos que deseas utilizar", font=("Arial", 12), bg="#ff4500", fg="white")
-    subtitle_label.grid(row=2, column=0, columnspan=2, pady=10, sticky="w")
+    # Frame para la búsqueda y selección de archivos
+    search_frame = tk.Frame(root, bg="#ff4500")
+    search_frame.grid(row=2, column=0, columnspan=2, padx=20, pady=10, sticky="nsew")
 
-    # Lista de bases de datos
-    db_frame = tk.Frame(root, bg="#ff4500")
-    db_frame.grid(row=3, column=0, columnspan=2, padx=20, pady=10, sticky="w")
+    # Entrada de búsqueda
+    search_label = tk.Label(search_frame, text="Buscar archivo:", font=("Arial", 12), bg="#ff4500", fg="white")
+    search_label.grid(row=0, column=0, pady=5, padx=5, sticky="w")
 
-    databases = ["Base de datos 1", "Base de datos 2", "Base de datos 3", "Base de datos 4", "Base de datos 5", "Base de datos 6"]
-    db_vars = []
-    for db in databases:
-        var = tk.BooleanVar()
-        db_vars.append(var)
-        tk.Checkbutton(db_frame, text=db, variable=var, font=("Arial", 12), 
-                      bg="#ff4500", fg="white", selectcolor="#ff4500",
-                      activebackground="#ff4500", activeforeground="white").pack(anchor="w")
+    search_entry = tk.Entry(search_frame, font=("Arial", 12), width=40)
+    search_entry.grid(row=0, column=1, pady=5, padx=5)
+
+    # Lista de archivos encontrados
+    files_listbox = tk.Listbox(search_frame, font=("Arial", 12), width=50, height=8)
+    files_listbox.grid(row=1, column=0, columnspan=2, pady=5, padx=5)
+
+    # Lista de archivos seleccionados
+    selected_label = tk.Label(search_frame, text="Archivos seleccionados:", font=("Arial", 12), bg="#ff4500", fg="white")
+    selected_label.grid(row=2, column=0, columnspan=2, pady=5, padx=5, sticky="w")
+
+    selected_files_listbox = tk.Listbox(search_frame, font=("Arial", 12), width=50, height=4)
+    selected_files_listbox.grid(row=3, column=0, columnspan=2, pady=5, padx=5)
+
+    def search_files():
+        search_term = search_entry.get().strip()
+        files_listbox.delete(0, tk.END)
+        
+        # Construir la ruta a la carpeta en el escritorio
+        desktop_path = os.path.join(os.path.expanduser('~'), 'Desktop')
+        base_path = os.path.join(desktop_path, 'Bases de datos para Reportes')
+        
+        if not os.path.exists(base_path):
+            files_listbox.insert(tk.END, "No se encontró la carpeta 'Bases de datos para Reportes'")
+            return
+
+        # Buscar archivos Excel que coincidan con el término de búsqueda
+        for root, dirs, files in os.walk(base_path):
+            for file in files:
+                if file.lower().endswith(('.xls', '.xlsx')) and search_term.lower() in file.lower():
+                    relative_path = os.path.relpath(root, base_path)
+                    display_path = os.path.join(relative_path, file)
+                    files_listbox.insert(tk.END, display_path)
+
+    def add_selected_file():
+        selection = files_listbox.curselection()
+        if selection:
+            relative_path = files_listbox.get(selection[0])
+            # Construir la ruta completa
+            desktop_path = os.path.join(os.path.expanduser('~'), 'Desktop')
+            base_path = os.path.join(desktop_path, 'Bases de datos para Reportes')
+            file_path = os.path.join(base_path, relative_path)
+            
+            if file_path not in selected_files_listbox.get(0, tk.END):
+                selected_files_listbox.insert(tk.END, relative_path)
+                # Guardar en data_selection con la ruta completa
+                base_name = os.path.splitext(os.path.basename(file_path))[0]
+                data_selection[base_name] = {
+                    'file_path': file_path,
+                    'header_row': 0,
+                    'sheets': [{
+                        'name': '',
+                        'columns': {
+                            'x': '',
+                            'y': ''
+                        },
+                        'graphs': []
+                    }]
+                }
+
+    # Botones de búsqueda y selección
+    search_button = tk.Button(search_frame, text="Buscar", command=search_files, bg="#ffcc66", fg="#333")
+    search_button.grid(row=0, column=2, pady=5, padx=5)
+
+    add_button = tk.Button(search_frame, text="Agregar", command=add_selected_file, bg="#ffcc66", fg="#333")
+    add_button.grid(row=1, column=2, pady=5, padx=5)
 
     # Botones de navegación
     prev_button = tk.Button(root, text="Anterior", font=("Arial", 12), bg="#ffcc66", fg="#333", command=show_page_one)
