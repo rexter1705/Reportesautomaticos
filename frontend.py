@@ -2,8 +2,8 @@ import sys
 import requests
 from PyQt5.QtWidgets import (
     QApplication, QMainWindow, QStackedWidget, QVBoxLayout, QLabel,
-    QPushButton, QListWidget, QWidget, QMessageBox, QHBoxLayout,  QComboBox, QTableWidget, QTableWidgetItem, QLineEdit, QHeaderView, QCheckBox, QTextEdit
-)
+    QPushButton, QListWidget, QListWidgetItem, QWidget, QMessageBox, QHBoxLayout,  QComboBox, QTableWidget, QTableWidgetItem, QLineEdit, QHeaderView, QCheckBox, QTextEdit,)
+from PyQt5.QtCore import Qt
 import pandas as pd
 from openpyxl import load_workbook
 import xlrd
@@ -81,7 +81,9 @@ class SecondPage(QWidget):
             if response.status_code == 200:
                 databases = response.json()
                 for db in databases:
-                    self.list_widget.addItem(f"{db['name']} ({db['path']})")
+                    item = QListWidgetItem(f"{db['name']} ({db['path']})")
+                    item.setCheckState(Qt.Unchecked)
+                    self.list_widget.addItem(item)
                 self.status_label.setText("Bases de datos cargadas correctamente.")
             else:
                 self.status_label.setText("Error al cargar bases de datos.")
@@ -89,11 +91,22 @@ class SecondPage(QWidget):
             self.status_label.setText(f"Error: {e}")
 
     def store_selected_databases(self):
-        selected_items = self.list_widget.selectedItems()
-        if selected_items:
-            selected_databases = [item.text() for item in selected_items]
-            self.parent().selected_databases = selected_databases
-            QMessageBox.information(self, "Bases Seleccionadas", f"Bases seleccionadas:\n{', '.join(selected_databases)}")
+        selected_databases = []
+        for index in range(self.list_widget.count()):
+            item = self.list_widget.item(index)
+            print(f"Item: {item.text()}, CheckState: {item.checkState()}")  # Depuración
+            if item.checkState() == Qt.Checked:
+                selected_databases.append(item.text())
+
+        if selected_databases:
+            # Obtener la referencia a MainWindow
+            main_window = self.parent().parent()
+            main_window.selected_databases = selected_databases
+            QMessageBox.information(
+                self, "Bases Seleccionadas", f"Bases seleccionadas:\n{', '.join(selected_databases)}"
+            )
+            # Llamar a start_iteration desde MainWindow
+            main_window.start_iteration()
         else:
             QMessageBox.warning(self, "Advertencia", "Por favor, selecciona al menos una base de datos.")
 
