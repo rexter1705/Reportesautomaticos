@@ -2,7 +2,7 @@ import sys
 import requests
 from PyQt5.QtWidgets import (
     QApplication, QMainWindow, QStackedWidget, QVBoxLayout, QLabel,
-    QPushButton, QListWidget, QWidget, QMessageBox, QHBoxLayout,  QComboBox, QTableWidget, QTableWidgetItem, QLineEdit, QHeaderView, QCheckBox
+    QPushButton, QListWidget, QWidget, QMessageBox, QHBoxLayout,  QComboBox, QTableWidget, QTableWidgetItem, QLineEdit, QHeaderView, QCheckBox, QTextEdit
 )
 import pandas as pd
 from openpyxl import load_workbook
@@ -167,8 +167,17 @@ class ThirdPage(QWidget):
             return
 
         try:
-            df = pd.read_excel(self.selected_file, sheet_name=self.selected_sheet, nrows=20)
-            self.show_table(df)
+            response = requests.post(f"{BACKEND_URL}/preview-sheet", json={
+                'file_path': self.selected_file,
+                'sheet_name': self.selected_sheet,
+                'header_row': self.selected_header_row
+            })
+            
+            if response.status_code == 200:
+                data = response.json()
+                self.show_table_from_data(data['columns'], data['data'])
+            else:
+                QMessageBox.warning(self, "Error", "No se pudo cargar la hoja.")
         except Exception as e:
             QMessageBox.warning(self, "Error", f"No se pudo cargar la hoja: {e}")
 
@@ -365,77 +374,20 @@ class FinalPage(QWidget):
     def generate_report(self):
         """Genera el reporte basado en las decisiones tomadas."""
         try:
-            output_directory = r"C:\Users\fglruiz\Desktop\Investigacion_e_informes\Reportes\Automatizados\Pruebas"
-            ensure_directory(output_directory)
-
-            all_chart_paths = []
-            database_sections = {}
-
-            # Iterar sobre cada base de datos seleccionada
-            for db_decision in self.decisions:
-                database_name = os.path.basename(db_decision['database']).replace('.xlsx', '').replace('.xls', '')
-                database_sections[database_name] = []
-
-                for sheet_decision in db_decision['decisions']:
-                    sheet_name = sheet_decision['sheet']
-                    header_row = sheet_decision['header_row']
-                    graphs = sheet_decision['graphs']
-                    columns = sheet_decision['columns']
-
-                    # Leer la hoja seleccionada
-                    df = pd.read_excel(db_decision['database'], sheet_name=sheet_name, header=header_row)
-
-                    # Encontrar máximos y mínimos
-                    max_min_info = identificar_maximos_minimos(df, columns['y_column'], columns['x_column'])
-
-                    # Agregar los resultados al archivo LaTeX
-                    agregar_max_min_latex(
-                        self.template_path,
-                        database_name,
-                        sheet_name,
-                        max_min_info['max'],
-                        max_min_info['min'],
-                        max_min_info['max_x'],
-                        max_min_info['min_x']
-                    )
-
-                    # Generar gráficos según las decisiones
-                    section_info = {
-                        'sheet_name': sheet_name,
-                        'max_value': max_min_info['max'],
-                        'min_value': max_min_info['min'],
-                        'max_x': max_min_info['max_x'],
-                        'min_x': max_min_info['min_x'],
-                        'charts': []
-                    }
-
-                    if "time_series" in graphs:
-                        time_series_output_path = os.path.join(output_directory, f"time_series_{sheet_name}.pgf")
-                        generate_time_series_pgf(df, columns['x_column'], columns['y_column'], time_series_output_path)
-                        section_info['charts'].append(time_series_output_path)
-
-                    if "bar_chart" in graphs:
-                        bar_chart_output_path = os.path.join(output_directory, f"bar_chart_{sheet_name}.pgf")
-                        generate_bar_chart_pgf(df, columns['x_column'], columns['y_column'], bar_chart_output_path)
-                        section_info['charts'].append(bar_chart_output_path)
-
-                    database_sections[database_name].append(section_info)
-
-            # Actualizar el archivo LaTeX con los gráficos y análisis
-            updated_latex_path = update_latex_file(
-                self.template_path,
-                all_chart_paths,
-                output_directory,
-                database_sections
-            )
-
-            if updated_latex_path:
-                # Compilar el archivo LaTeX
-                compile_latex(updated_latex_path, output_directory)
-                QMessageBox.information(self, "Reporte Generado", f"El reporte se ha generado correctamente en: {output_directory}")
+            response = requests.post(f"{BACKEND_URL}/generate-report", json={
+                'template_path': self.template_path,
+                'decisions': self.decisions
+            })
+            
+            if response.status_code == 200:
+                data = response.json()
+                QMessageBox.information(
+                    self, 
+                    "Reporte Generado", 
+                    f"El reporte se ha generado correctamente en: {data['output_path']}"
+                )
             else:
-                QMessageBox.warning(self, "Error", "No se pudo actualizar el archivo LaTeX.")
-
+                QMessageBox.warning(self, "Error", "No se pudo generar el reporte.")
         except Exception as e:
             QMessageBox.critical(self, "Error", f"Ocurrió un error al generar el reporte: {e}")
 
@@ -478,6 +430,48 @@ class MainWindow(QMainWindow):
         """Ir a la página final para revisar decisiones."""
         self.final_page.load_decisions(self.selected_template, self.database_decisions)
         self.stack.setCurrentIndex(4)
+
+    def start_iteration(self):
+        """Inicia la iteración de bases de datos seleccionadas."""
+        if not self.selected_databases:
+            QMessageBox.warning(self, "Advertencia", "Por favor, selecciona al menos una base de datos.")
+            return
+
+        # Preparar para nueva iteración
+        self.current_database_index = 0
+        self.database_decisions = []
+        
+        # Cargar el primer archivo
+        current_database = self.selected_databases[self.current_database_index]
+        database_name = current_database.split(" (")[0]
+        database_path = current_database[current_database.find("(")+1:current_database.find(")")]
+        
+        # Cargar el archivo en la tercera página
+        self.third_page.load_file(database_path)
+        
+        # Avanzar a la tercera página
+        self.stack.setCurrentIndex(2)
+
+    def save_graph_decisions(self):
+        """Guarda las decisiones de gráficos para la base de datos actual."""
+        if not hasattr(self, 'database_decisions'):
+            self.database_decisions = []
+
+        current_database = self.selected_databases[self.current_database_index]
+        database_path = current_database[current_database.find("(")+1:current_database.find(")")]
+        
+        # Crear o actualizar las decisiones para la base de datos actual
+        current_decision = {
+            'database': database_path,
+            'decisions': [{
+                'sheet': self.third_page.selected_sheet,
+                'header_row': self.third_page.selected_header_row,
+                'graphs': self.fourth_page.selected_graphs,
+                'columns': self.fourth_page.selected_columns
+            }]
+        }
+        
+        self.database_decisions.append(current_decision)
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
