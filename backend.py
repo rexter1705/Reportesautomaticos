@@ -5,7 +5,6 @@ from URLS6 import (
     generate_time_series_pgf,
     generate_bar_chart_pgf,
     identificar_maximos_minimos,
-    agregar_max_min_latex,
     update_latex_file,
     compile_latex,
     ensure_directory
@@ -125,16 +124,28 @@ def generate_report():
         data = request.json
         template_path = data['template_path']
         decisions = data['decisions']
-        output_directory = r"C:\Users\fglruiz\Desktop\Investigacion_e_informes\Reportes\Automatizados\Pruebas"
+        output_directory = data.get('output_directory', r"C:\Users\fglruiz\Desktop\Investigacion_e_informes\Reportes\Automatizados\Pruebas")
         
-        ensure_directory(output_directory)
-        database_sections = {}
-        chart_paths = []
+        print(f"Iniciando generación de reporte con:")
+        print(f"Template: {template_path}")
+        print(f"Output directory: {output_directory}")
+        print(f"Decisions: {decisions}")
 
-        # Procesar cada base de datos y sus decisiones
+        try:
+            ensure_directory(output_directory)
+            print(f"Directorio de salida creado/verificado: {output_directory}")
+        except Exception as e:
+            error_msg = f"No se pudo crear el directorio de salida: {str(e)}"
+            print(error_msg)
+            return jsonify({'error': error_msg}), 500
+
+        database_sections = {}
+        pgf_files_created = []
+
         for db_decision in decisions:
             database_path = db_decision['database']
             database_name = os.path.basename(database_path).replace('.xlsx', '').replace('.xls', '')
+            print(f"\nProcesando base de datos: {database_name}")
             database_sections[database_name] = []
 
             for sheet_decision in db_decision['decisions']:
@@ -142,59 +153,153 @@ def generate_report():
                 header_row = sheet_decision['header_row']
                 columns = sheet_decision['columns']
                 
-                # Leer los datos
-                df = pd.read_excel(database_path, sheet_name=sheet_name, header=header_row)
-                x_data = df[columns['x_column']]
-                y_data = df[columns['y_column']]
+                print(f"\nProcesando hoja: {sheet_name}")
+                print(f"Header row: {header_row}")
+                print(f"Columnas seleccionadas: {columns}")
+                
+                try:
+                    # Determinar el motor basado en la extensión del archivo
+                    file_extension = os.path.splitext(database_path)[1].lower()
+                    engine = 'xlrd' if file_extension == '.xls' else 'openpyxl'
+                    print(f"Usando motor {engine} para archivo {file_extension}")
 
-                # Generar gráficos según las selecciones
-                for graph_type in sheet_decision['graphs']:
-                    if graph_type == 'time_series':
-                        chart_path = generate_time_series_pgf(
-                            x_data, 
-                            y_data,
-                            output_directory,
-                            f"{database_name}_{sheet_name}_time_series"
-                        )
-                        # Identificar máximos y mínimos
-                        max_min_points = identificar_maximos_minimos(x_data, y_data)
-                        # Agregar anotaciones de máximos y mínimos al LaTeX
-                        latex_content = agregar_max_min_latex(max_min_points)
-                        database_sections[database_name].append({
-                            'chart_path': chart_path,
-                            'annotations': latex_content
-                        })
-                        chart_paths.append(chart_path)
+                    # Leer los datos
+                    df = pd.read_excel(
+                        database_path,
+                        sheet_name=sheet_name,
+                        header=header_row,
+                        engine=engine
+                    )
+                    
+                    # Convertir todas las columnas a string para comparación consistente
+                    df.columns = df.columns.astype(str)
+                    
+                    print(f"DataFrame cargado. Dimensiones: {df.shape}")
+                    print(f"Columnas disponibles: {df.columns.tolist()}")
+                    print(f"Buscando columnas: x='{columns['x_column']}', y='{columns['y_column']}'")
 
-                    elif graph_type == 'bar_chart':
-                        chart_path = generate_bar_chart_pgf(
-                            x_data,
-                            y_data,
-                            output_directory,
-                            f"{database_name}_{sheet_name}_bar_chart"
-                        )
-                        database_sections[database_name].append({
-                            'chart_path': chart_path,
-                            'annotations': None
-                        })
-                        chart_paths.append(chart_path)
+                    # Convertir nombres de columnas buscadas a string
+                    x_column = str(columns['x_column'])
+                    y_column = str(columns['y_column'])
 
-        # Actualizar el archivo LaTeX con los gráficos y anotaciones
+                    # Verificar que las columnas existan (con manejo de tipos)
+                    if x_column not in df.columns and x_column.lower() not in [col.lower() for col in df.columns]:
+                        raise Exception(f"Columna X '{x_column}' no encontrada. Columnas disponibles: {df.columns.tolist()}")
+                    if y_column not in df.columns and y_column.lower() not in [col.lower() for col in df.columns]:
+                        raise Exception(f"Columna Y '{y_column}' no encontrada. Columnas disponibles: {df.columns.tolist()}")
+
+                    # Obtener los nombres exactos de las columnas (preservando mayúsculas/minúsculas)
+                    x_column_exact = next(col for col in df.columns if col.lower() == x_column.lower())
+                    y_column_exact = next(col for col in df.columns if col.lower() == y_column.lower())
+
+                    # Crear DataFrame de trabajo con manejo explícito de tipos
+                    working_df = pd.DataFrame()
+                    working_df['x'] = df[x_column_exact].astype(str)
+                    working_df['y'] = pd.to_numeric(df[y_column_exact], errors='coerce')
+                    working_df = working_df.dropna()
+                    
+                    print(f"DataFrame de trabajo creado. Dimensiones: {working_df.shape}")
+                    print(f"Muestra de datos:")
+                    print(working_df.head())
+
+                    # Identificar máximos y mínimos
+                    max_min_points = identificar_maximos_minimos(df, columns['y_column'], columns['x_column'])
+                    print(f"Máximos y mínimos identificados: {max_min_points}")
+
+                    section_info = {
+                        'sheet_name': sheet_name,
+                        'max_value': str(max_min_points['max']),
+                        'min_value': str(max_min_points['min']),
+                        'max_x': str(max_min_points['max_x']),
+                        'min_x': str(max_min_points['min_x']),
+                        'charts': []
+                    }
+
+                    # Generar gráficos según las selecciones
+                    for graph_type in sheet_decision['graphs']:
+                        try:
+                            if graph_type == 'time_series':
+                                output_filename = os.path.join(
+                                    output_directory, 
+                                    f"{database_name}_{sheet_name}_time_series.pgf"
+                                )
+                                generate_time_series_pgf(
+                                    working_df,
+                                    'x',
+                                    'y',
+                                    output_filename
+                                )
+                                if os.path.exists(output_filename):
+                                    section_info['charts'].append(output_filename)
+                                    pgf_files_created.append(output_filename)
+                                    print(f"Archivo PGF creado: {output_filename}")
+                                else:
+                                    raise Exception(f"No se pudo crear el archivo PGF: {output_filename}")
+
+                            elif graph_type == 'bar_chart':
+                                output_filename = os.path.join(
+                                    output_directory, 
+                                    f"{database_name}_{sheet_name}_bar_chart.pgf"
+                                )
+                                generate_bar_chart_pgf(
+                                    working_df,
+                                    'x',
+                                    'y',
+                                    output_filename
+                                )
+                                if os.path.exists(output_filename):
+                                    section_info['charts'].append(output_filename)
+                                    pgf_files_created.append(output_filename)
+                                    print(f"Archivo PGF creado: {output_filename}")
+                                else:
+                                    raise Exception(f"No se pudo crear el archivo PGF: {output_filename}")
+
+                        except Exception as e:
+                            error_msg = f"Error generando gráfico {graph_type} para {sheet_name}: {str(e)}"
+                            print(error_msg)
+                            return jsonify({'error': error_msg}), 500
+
+                    database_sections[database_name].append(section_info)
+
+                except Exception as e:
+                    error_msg = f"Error procesando hoja {sheet_name}: {str(e)}"
+                    print(error_msg)
+                    import traceback
+                    print(traceback.format_exc())
+                    return jsonify({'error': error_msg}), 500
+
+        # Verificar que se hayan creado todos los archivos PGF necesarios
+        if not pgf_files_created:
+            error_msg = "No se generó ningún archivo PGF"
+            print(error_msg)
+            return jsonify({'error': error_msg}), 500
+
+        # Actualizar el archivo LaTeX
         updated_latex_path = update_latex_file(
             template_path,
-            chart_paths,
+            [],
             output_directory,
             database_sections
         )
 
-        if updated_latex_path:
+        if updated_latex_path and os.path.exists(updated_latex_path):
             compile_latex(updated_latex_path, output_directory)
-            return jsonify({'success': True, 'output_path': output_directory})
+            return jsonify({
+                'success': True, 
+                'output_path': output_directory,
+                'pgf_files': pgf_files_created
+            })
         else:
-            return jsonify({'error': 'No se pudo actualizar el archivo LaTeX.'}), 500
+            error_msg = "No se pudo actualizar o encontrar el archivo LaTeX generado"
+            print(error_msg)
+            return jsonify({'error': error_msg}), 500
 
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        error_msg = f"Error general en generate_report: {str(e)}"
+        print(error_msg)
+        import traceback
+        print(traceback.format_exc())
+        return jsonify({'error': error_msg}), 500
 
 if __name__ == '__main__':
     app.run(port=5000)

@@ -293,6 +293,16 @@ class ThirdPage(QWidget):
         # Ajustar el ancho de las columnas
         self.table_preview.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
 
+    def clear_selections(self):
+        """Limpia las selecciones anteriores."""
+        self.selected_file = None
+        self.selected_sheet = None
+        self.selected_header_row = None
+        self.sheet_selector.clear()
+        self.header_input.clear()
+        self.table_preview.setRowCount(0)
+        self.table_preview.setColumnCount(0)
+
 class FourthPage(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -341,11 +351,41 @@ class FourthPage(QWidget):
         self.selected_sheet = sheet_name
         self.sheet_label.setText(f"Hoja seleccionada: {sheet_name}")
         
-        # Actualizar los dropdowns con los nombres de las columnas
-        self.x_column_dropdown.clear()
-        self.y_column_dropdown.clear()
-        self.x_column_dropdown.addItems(column_names)
-        self.y_column_dropdown.addItems(column_names)
+        try:
+            # Leer los datos para mostrar en la tabla
+            df = pd.read_excel(
+                file_path,
+                sheet_name=sheet_name,
+                header=self.parent().parent().third_page.selected_header_row
+            )
+            
+            # Mostrar los datos en la tabla
+            self.table_preview.setColumnCount(len(column_names))
+            self.table_preview.setRowCount(len(df))
+            
+            # Establecer encabezados
+            self.table_preview.setHorizontalHeaderLabels(column_names)
+            
+            # Llenar datos usando iloc para acceder por posición
+            for i in range(len(df)):
+                for j in range(len(df.columns)):
+                    item = QTableWidgetItem(str(df.iloc[i, j]))  # Usar iloc para acceder por posición
+                    self.table_preview.setItem(i, j, item)
+            
+            # Ajustar el ancho de las columnas
+            self.table_preview.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
+            
+            # Actualizar los dropdowns con los nombres de las columnas
+            self.x_column_dropdown.clear()
+            self.y_column_dropdown.clear()
+            self.x_column_dropdown.addItems(column_names)
+            self.y_column_dropdown.addItems(column_names)
+            
+        except Exception as e:
+            print(f"Error al cargar la hoja en la cuarta página: {str(e)}")
+            import traceback
+            print(traceback.format_exc())
+            QMessageBox.warning(self, "Error", f"No se pudo cargar la vista previa: {str(e)}")
 
     def show_table(self, df):
         """Muestra un DataFrame en la tabla de vista previa."""
@@ -396,6 +436,17 @@ class FourthPage(QWidget):
     def go_to_previous_page(self):
         self.parent().setCurrentIndex(2)
 
+    def clear_selections(self):
+        """Limpia las selecciones anteriores."""
+        self.x_column_dropdown.clear()
+        self.y_column_dropdown.clear()
+        self.bar_chart_checkbox.setChecked(False)
+        self.time_series_checkbox.setChecked(False)
+        self.table_preview.setRowCount(0)
+        self.table_preview.setColumnCount(0)
+        self.selected_graphs = []
+        self.selected_columns = {}
+
 class FinalPage(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -407,10 +458,15 @@ class FinalPage(QWidget):
         self.summary_text.setReadOnly(True)
         self.generate_button = QPushButton("Generar Reporte")
         self.back_button = QPushButton("Regresar")
+        self.output_label = QLabel("Directorio de salida:")
+        
+        # Directorio de salida por defecto
+        self.output_directory = r"C:\Users\fglruiz\Desktop\Investigacion_e_informes\Reportes\Automatizados\Pruebas"
 
         # Configuración del layout
         self.layout.addWidget(self.summary_label)
         self.layout.addWidget(self.summary_text)
+        self.layout.addWidget(self.output_label)
         self.layout.addWidget(self.generate_button)
         self.layout.addWidget(self.back_button)
         self.setLayout(self.layout)
@@ -420,8 +476,8 @@ class FinalPage(QWidget):
         self.back_button.clicked.connect(self.go_to_previous_page)
 
         # Variables
-        self.decisions = []  # Decisiones tomadas en todas las páginas
-        self.template_path = None  # Ruta de la plantilla seleccionada
+        self.decisions = []
+        self.template_path = None
 
     def load_decisions(self, template_path, decisions):
         """Carga las decisiones y la plantilla seleccionada para mostrarlas en la interfaz."""
@@ -441,13 +497,15 @@ class FinalPage(QWidget):
             summary += "\n"
 
         self.summary_text.setText(summary)
+        self.output_label.setText(f"Directorio de salida: {self.output_directory}")
 
     def generate_report(self):
         """Genera el reporte basado en las decisiones tomadas."""
         try:
             response = requests.post(f"{BACKEND_URL}/generate-report", json={
                 'template_path': self.template_path,
-                'decisions': self.decisions
+                'decisions': self.decisions,
+                'output_directory': self.output_directory
             })
             
             if response.status_code == 200:
@@ -455,12 +513,13 @@ class FinalPage(QWidget):
                 QMessageBox.information(
                     self, 
                     "Reporte Generado", 
-                    f"El reporte se ha generado correctamente en: {data['output_path']}"
+                    f"El reporte se ha generado correctamente en:\n{data['output_path']}"
                 )
             else:
-                QMessageBox.warning(self, "Error", "No se pudo generar el reporte.")
+                error_msg = response.json().get('error', 'Error desconocido')
+                QMessageBox.warning(self, "Error", f"No se pudo generar el reporte: {error_msg}")
         except Exception as e:
-            QMessageBox.critical(self, "Error", f"Ocurrió un error al generar el reporte: {e}")
+            QMessageBox.critical(self, "Error", f"Ocurrió un error al generar el reporte: {str(e)}")
 
     def go_to_previous_page(self):
         self.parent().setCurrentIndex(3)
@@ -491,16 +550,63 @@ class MainWindow(QMainWindow):
         self.selected_template = None
         self.selected_databases = []
         self.database_decisions = []
+        self.current_database_index = 0
 
         # Conexión entre páginas
         self.second_page.next_button.clicked.connect(self.start_iteration)
         self.fourth_page.save_button.clicked.connect(self.save_graph_decisions)
-        self.fourth_page.save_button.clicked.connect(self.go_to_final_page)
 
-    def go_to_final_page(self):
-        """Ir a la página final para revisar decisiones."""
-        self.final_page.load_decisions(self.selected_template, self.database_decisions)
-        self.stack.setCurrentIndex(4)
+    def save_graph_decisions(self):
+        """Guarda las decisiones de gráficos y maneja la iteración de bases de datos."""
+        if not hasattr(self, 'database_decisions'):
+            self.database_decisions = []
+
+        # Verificar que se hayan hecho las selecciones necesarias
+        if not self.fourth_page.selected_graphs or not self.fourth_page.selected_columns:
+            QMessageBox.warning(self, "Advertencia", "Por favor, selecciona los gráficos y columnas antes de continuar.")
+            return
+
+        current_database = self.selected_databases[self.current_database_index]
+        database_path = current_database[current_database.find("(")+1:current_database.find(")")]
+        
+        # Crear o actualizar las decisiones para la base de datos actual
+        current_decision = {
+            'database': database_path,
+            'decisions': [{
+                'sheet': self.third_page.selected_sheet,
+                'header_row': self.third_page.selected_header_row,
+                'graphs': self.fourth_page.selected_graphs,
+                'columns': self.fourth_page.selected_columns
+            }]
+        }
+        
+        self.database_decisions.append(current_decision)
+        
+        # Verificar si hay más bases de datos para procesar
+        self.current_database_index += 1
+        if self.current_database_index < len(self.selected_databases):
+            # Cargar la siguiente base de datos
+            next_database = self.selected_databases[self.current_database_index]
+            database_path = next_database[next_database.find("(")+1:next_database.find(")")]
+            
+            # Limpiar selecciones anteriores
+            self.third_page.clear_selections()
+            self.fourth_page.clear_selections()
+            
+            # Cargar la siguiente base de datos en la tercera página
+            self.third_page.load_file(database_path)
+            
+            # Volver a la tercera página
+            self.stack.setCurrentIndex(2)
+            
+            QMessageBox.information(
+                self,
+                "Siguiente Base de Datos",
+                f"Por favor, procese la siguiente base de datos:\n{next_database.split(' (')[0]}"
+            )
+        else:
+            # Si no hay más bases de datos, ir a la página final
+            self.go_to_final_page()
 
     def start_iteration(self):
         """Inicia la iteración de bases de datos seleccionadas."""
@@ -523,26 +629,10 @@ class MainWindow(QMainWindow):
         # Avanzar a la tercera página
         self.stack.setCurrentIndex(2)
 
-    def save_graph_decisions(self):
-        """Guarda las decisiones de gráficos para la base de datos actual."""
-        if not hasattr(self, 'database_decisions'):
-            self.database_decisions = []
-
-        current_database = self.selected_databases[self.current_database_index]
-        database_path = current_database[current_database.find("(")+1:current_database.find(")")]
-        
-        # Crear o actualizar las decisiones para la base de datos actual
-        current_decision = {
-            'database': database_path,
-            'decisions': [{
-                'sheet': self.third_page.selected_sheet,
-                'header_row': self.third_page.selected_header_row,
-                'graphs': self.fourth_page.selected_graphs,
-                'columns': self.fourth_page.selected_columns
-            }]
-        }
-        
-        self.database_decisions.append(current_decision)
+    def go_to_final_page(self):
+        """Ir a la página final para revisar decisiones."""
+        self.final_page.load_decisions(self.selected_template, self.database_decisions)
+        self.stack.setCurrentIndex(4)
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
