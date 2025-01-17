@@ -64,11 +64,23 @@ class SecondPage(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.layout = QVBoxLayout()
+        
+        # Añadir barra de búsqueda
+        self.search_layout = QHBoxLayout()
+        self.search_label = QLabel("Buscar:")
+        self.search_input = QLineEdit()
+        self.search_input.setPlaceholderText("Escriba para filtrar bases de datos...")
+        self.search_input.textChanged.connect(self.filter_databases)
+        self.search_layout.addWidget(self.search_label)
+        self.search_layout.addWidget(self.search_input)
+        
         self.list_widget = QListWidget()
         self.back_button = QPushButton("Regresar")
         self.next_button = QPushButton("Seleccionar Bases de Datos")
         self.status_label = QLabel("Cargando bases de datos...")
 
+        # Añadir widgets al layout principal
+        self.layout.addLayout(self.search_layout)
         self.layout.addWidget(QLabel("Selecciona las Bases de Datos:"))
         self.layout.addWidget(self.list_widget)
         self.layout.addWidget(self.next_button)
@@ -80,17 +92,32 @@ class SecondPage(QWidget):
         self.back_button.clicked.connect(self.go_to_previous_page)
         self.next_button.clicked.connect(self.store_selected_databases)
 
+        # Lista para almacenar todas las bases de datos
+        self.all_databases = []
+        # Diccionario para mantener el estado de las casillas
+        self.checked_states = {}
+        
+        # Conectar el evento de cambio de estado de las casillas
+        self.list_widget.itemChanged.connect(self.on_item_changed)
+        
         # Cargar bases de datos desde el backend
         self.load_databases()
+
+    def on_item_changed(self, item):
+        """Actualiza el estado global de las casillas cuando cambia una selección."""
+        self.checked_states[item.text()] = item.checkState()
 
     def load_databases(self):
         try:
             response = requests.get(f"{BACKEND_URL}/databases")
             if response.status_code == 200:
                 databases = response.json()
+                self.all_databases = databases
                 for db in databases:
-                    item = QListWidgetItem(f"{db['name']} ({db['path']})")
+                    full_text = f"{db['name']} ({db['path']})"
+                    item = QListWidgetItem(full_text)
                     item.setCheckState(Qt.Unchecked)
+                    self.checked_states[full_text] = Qt.Unchecked
                     self.list_widget.addItem(item)
                 self.status_label.setText("Bases de datos cargadas correctamente.")
             else:
@@ -98,20 +125,38 @@ class SecondPage(QWidget):
         except Exception as e:
             self.status_label.setText(f"Error: {e}")
 
+    def filter_databases(self, text):
+        """Filtra las bases de datos según el texto de búsqueda y mantiene las selecciones."""
+        self.list_widget.clear()
+        search_text = text.lower()
+        
+        for db in self.all_databases:
+            full_text = f"{db['name']} ({db['path']})"
+            if search_text in db['name'].lower():
+                item = QListWidgetItem(full_text)
+                # Usar el estado guardado o establecer como desmarcado si no existe
+                item.setCheckState(self.checked_states.get(full_text, Qt.Unchecked))
+                self.list_widget.addItem(item)
+
     def store_selected_databases(self):
+        """Almacena todas las bases de datos seleccionadas usando el estado global."""
         selected_databases = []
-        for index in range(self.list_widget.count()):
-            item = self.list_widget.item(index)
-            print(f"Item: {item.text()}, CheckState: {item.checkState()}")  # Depuración
-            if item.checkState() == Qt.Checked:
-                selected_databases.append(item.text())
+        
+        # Usar checked_states para obtener todas las selecciones
+        for db in self.all_databases:
+            full_text = f"{db['name']} ({db['path']})"
+            if self.checked_states.get(full_text) == Qt.Checked:
+                selected_databases.append(full_text)
+                print(f"Base seleccionada: {full_text}")  # Depuración
 
         if selected_databases:
             # Obtener la referencia a MainWindow
             main_window = self.parent().parent()
             main_window.selected_databases = selected_databases
             QMessageBox.information(
-                self, "Bases Seleccionadas", f"Bases seleccionadas:\n{', '.join(selected_databases)}"
+                self, 
+                "Bases Seleccionadas", 
+                f"Bases seleccionadas:\n{', '.join(selected_databases)}"
             )
             # Llamar a start_iteration desde MainWindow
             main_window.start_iteration()

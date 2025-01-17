@@ -90,32 +90,46 @@ def preview_sheet():
         
         # Determinar el motor basado en la extensión del archivo
         file_extension = os.path.splitext(file_path)[1].lower()
-        engine = 'xlrd' if file_extension == '.xls' else 'openpyxl'
         
-        print(f"Usando motor: {engine} para archivo {file_extension}")
-        
-        # Leer el Excel especificando el nombre de la hoja como string
-        df = pd.read_excel(
-            file_path, 
-            sheet_name=str(sheet_name),
-            header=int(header_row),
-            nrows=20,
-            engine=engine
-        )
-        
-        print(f"DataFrame cargado exitosamente. Columnas: {df.columns.tolist()}")
-        
-        # Convertir las columnas a string para evitar problemas de serialización
-        df.columns = df.columns.astype(str)
-        
-        return jsonify({
-            'columns': df.columns.tolist(),
-            'data': df.to_dict('records')
-        })
+        try:
+            # Usar openpyxl para .xlsx y .xlsm, xlrd para .xls
+            if file_extension in ['.xlsx', '.xlsm']:
+                df = pd.read_excel(
+                    file_path, 
+                    sheet_name=str(sheet_name),
+                    header=int(header_row),
+                    nrows=20,
+                    engine='openpyxl'
+                )
+            elif file_extension == '.xls':
+                df = pd.read_excel(
+                    file_path, 
+                    sheet_name=str(sheet_name),
+                    header=int(header_row),
+                    nrows=20,
+                    engine='xlrd'
+                )
+            else:
+                return jsonify({'error': f"Formato de archivo no soportado: {file_extension}. Use archivos .xls, .xlsx o .xlsm"}), 400
+            
+            print(f"DataFrame cargado exitosamente. Columnas: {df.columns.tolist()}")
+            
+            # Convertir las columnas a string para evitar problemas de serialización
+            df.columns = df.columns.astype(str)
+            
+            return jsonify({
+                'columns': df.columns.tolist(),
+                'data': df.to_dict('records')
+            })
+            
+        except Exception as e:
+            print(f"Error al leer el archivo Excel: {str(e)}")
+            return jsonify({'error': f"Error al leer el archivo Excel: {str(e)}"}), 500
+            
     except Exception as e:
         print(f"Error detallado en preview_sheet: {str(e)}")
         import traceback
-        print(traceback.format_exc())  # Esto imprimirá el traceback completo
+        print(traceback.format_exc())
         return jsonify({'error': str(e)}), 500
 
 @app.route('/generate-report', methods=['POST'])
@@ -160,16 +174,24 @@ def generate_report():
                 try:
                     # Determinar el motor basado en la extensión del archivo
                     file_extension = os.path.splitext(database_path)[1].lower()
-                    engine = 'xlrd' if file_extension == '.xls' else 'openpyxl'
-                    print(f"Usando motor {engine} para archivo {file_extension}")
-
-                    # Leer los datos
-                    df = pd.read_excel(
-                        database_path,
-                        sheet_name=sheet_name,
-                        header=header_row,
-                        engine=engine
-                    )
+                    
+                    # Usar openpyxl para .xlsx y .xlsm, xlrd para .xls
+                    if file_extension in ['.xlsx', '.xlsm']:
+                        df = pd.read_excel(
+                            database_path,
+                            sheet_name=sheet_name,
+                            header=header_row,
+                            engine='openpyxl'
+                        )
+                    elif file_extension == '.xls':
+                        df = pd.read_excel(
+                            database_path,
+                            sheet_name=sheet_name,
+                            header=header_row,
+                            engine='xlrd'
+                        )
+                    else:
+                        raise Exception(f"Formato de archivo no soportado: {file_extension}")
                     
                     # Convertir todas las columnas a string para comparación consistente
                     df.columns = df.columns.astype(str)
