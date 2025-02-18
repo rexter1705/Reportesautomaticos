@@ -2,8 +2,8 @@ from flask import Flask, jsonify, request
 import pandas as pd
 import os
 from URLS6 import (
-    generate_time_series_pgf,
-    generate_bar_chart_pgf,
+    generate_time_series_tikz,
+    generate_bar_chart_tikz,
     identificar_maximos_minimos,
     update_latex_file,
     compile_latex,
@@ -245,7 +245,7 @@ def generate_report():
                                     output_directory, 
                                     f"{database_name}_{sheet_name}_time_series.pgf"
                                 )
-                                generate_time_series_pgf(
+                                generate_time_series_tikz(
                                     working_df,
                                     'x',
                                     'y',
@@ -263,7 +263,7 @@ def generate_report():
                                     output_directory, 
                                     f"{database_name}_{sheet_name}_bar_chart.pgf"
                                 )
-                                generate_bar_chart_pgf(
+                                generate_bar_chart_tikz(
                                     working_df,
                                     'x',
                                     'y',

@@ -7,7 +7,6 @@ import subprocess
 import matplotlib.pyplot as plt
 from urllib.parse import urljoin
 import requests
-import zipfile
 from bs4 import BeautifulSoup
 from difflib import get_close_matches
 
@@ -123,52 +122,67 @@ def adjust_figure_size(x_labels, base_width=6, base_height=4, scale_factor=0.2):
     height = base_height + (0.1 * max_label_length)  # Ajuste basado en longitud de etiquetas
     return (width, height)
 
-def generate_time_series_tikz(df, x_column, y_column, output_filename):
+def generate_time_series_pgf(df, x_column, y_column, output_filename):
     try:
         df = df.dropna(subset=[x_column, y_column]).copy()
         df.loc[:, x_column] = df[x_column].astype(str)
         df.loc[:, y_column] = pd.to_numeric(df[y_column], errors='coerce')
         df = df.dropna(subset=[y_column])
 
-        with open(output_filename, "w") as f:
-            f.write("\\begin{tikzpicture}\n")
-            f.write("  \\begin{axis}[xlabel={%s}, ylabel={%s}, grid=major]\n" % (x_column, y_column))
-            f.write("    \\addplot[color=blue, mark=*] coordinates {\n")
-            
-            for x, y in zip(df[x_column], df[y_column]):
-                f.write(f"      ({x}, {y})\n")
-            
-            f.write("    };\n")
-            f.write("  \\end{axis}\n")
-            f.write("\\end{tikzpicture}\n")
-        
-        print(f"TikZ plot saved to '{output_filename}'")
+        plt.rcParams.update({
+            "pgf.texsystem": "pdflatex",
+            "font.family": "serif",
+            "text.usetex": True,
+            "pgf.rcfonts": False,
+        })
+
+        # Ajustar tamaño basado en etiquetas
+        fig_size = adjust_figure_size(df[x_column].tolist())
+        plt.figure(figsize=fig_size)
+
+        plt.plot(df[x_column], df[y_column], label=y_column, color='blue')
+        plt.title(f'Time Series of {y_column}')
+        plt.xlabel(x_column, fontsize=10)
+        plt.ylabel(y_column, fontsize=10)
+        plt.grid(True)
+        plt.xticks(rotation=45, fontsize=8)
+        plt.yticks(fontsize=8)
+
+        plt.tight_layout()  # Ajustar diseño para evitar cortes
+        plt.savefig(output_filename, format="pgf")
+        plt.close()
+        print(f"PGF plot saved to '{output_filename}'")
     except Exception as e:
-        print(f"Error generating time series TikZ: {e}")
+        print(f"Error generating time series PGF: {e}")
 
-
-def generate_bar_chart_tikz(df, x_column, y_column, output_filename):
+def generate_bar_chart_pgf(df, x_column, y_column, output_filename):
     try:
         df = df.dropna(subset=[x_column, y_column]).copy()
-        df.loc[:, x_column] = df[x_column].astype(str)
-        df.loc[:, y_column] = pd.to_numeric(df[y_column], errors='coerce')
-        df = df.dropna(subset=[y_column])
 
-        with open(output_filename, "w") as f:
-            f.write("\\begin{tikzpicture}\n")
-            f.write("  \\begin{axis}[ybar, symbolic x coords={%s}, xtick=data, xlabel={%s}, ylabel={%s}, grid=major]\n" % (', '.join(df[x_column]), x_column, y_column))
-            f.write("    \\addplot coordinates {\n")
-            
-            for x, y in zip(df[x_column], df[y_column]):
-                f.write(f"      ({x}, {y})\n")
-            
-            f.write("    };\n")
-            f.write("  \\end{axis}\n")
-            f.write("\\end{tikzpicture}\n")
-        
-        print(f"TikZ bar chart saved to '{output_filename}'")
+        plt.rcParams.update({
+            "pgf.texsystem": "pdflatex",
+            "font.family": "serif",
+            "text.usetex": True,
+            "pgf.rcfonts": False,
+        })
+
+        # Ajustar tamaño basado en etiquetas
+        fig_size = adjust_figure_size(df[x_column].tolist())
+        plt.figure(figsize=fig_size)
+
+        plt.bar(df[x_column], df[y_column], color='green')
+        plt.title(f'Bar Chart of {y_column}')
+        plt.xlabel(x_column, fontsize=10)
+        plt.ylabel(y_column, fontsize=10)
+        plt.xticks(rotation=45, fontsize=8)
+        plt.yticks(fontsize=8)
+
+        plt.tight_layout()  # Ajustar diseño para evitar cortes
+        plt.savefig(output_filename, format="pgf")
+        plt.close()
+        print(f"Bar chart PGF saved to '{output_filename}'")
     except Exception as e:
-        print(f"Error generating bar chart TikZ: {e}")
+        print(f"Error generating bar chart PGF: {e}")
 # Descargar bases de datos desde una página
 def obtener_link_interactivo():
     """
@@ -374,37 +388,18 @@ def update_latex_file(latex_template_path, chart_paths, output_directory, databa
         print(f"Error updating LaTeX file: {e}")
         return None
 
-def compile_latex(updated_latex_path, chart_paths, output_directory):
+def compile_latex(updated_latex_path, output_directory):
     try:
-        # Leer el contenido del archivo LaTeX actualizado
-        with open(updated_latex_path, 'r') as file:
-            latex_content = file.read()
-        
-        # Generar el nombre del nuevo archivo .tex con timestamp
         current_time = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-        output_tex_name = f"Prueba_{current_time}.tex"
+        output_pdf_name = f"Prueba_{current_time}.pdf"
         output_directory = output_directory.replace('\\', '/')
         os.chdir(output_directory)
-        output_tex_path = os.path.join(output_directory, output_tex_name)
-        
-        # Guardar el contenido en un nuevo archivo .tex
-        with open(output_tex_path, 'w') as file:
-            file.write(latex_content)
-        
-        print(f"LaTeX file successfully saved at: {output_tex_path}")
-        
-        # Crear el archivo ZIP con el .tex y los gráficos
-        zip_filename = os.path.join(output_directory, "output_files.zip")
-        with zipfile.ZipFile(zip_filename, 'w') as zipf:
-            files_to_zip = [output_tex_path] + chart_paths
-            for file in files_to_zip:
-                if os.path.exists(file):
-                    zipf.write(file, os.path.basename(file))
-        print(f"ZIP file successfully created at: {zip_filename}")
-        
+        subprocess.run(["pdflatex", "-shell-escape", "--interaction=nonstopmode", updated_latex_path.replace('\\', '/'), "-jobname", output_pdf_name.split('.')[0]], check=True)
+        print(f"PDF successfully created at: {os.path.join(output_directory, output_pdf_name)}")
+    except subprocess.CalledProcessError as e:
+        print(f"Error compiling LaTeX: {e}")
     except Exception as e:
-        print(f"Error processing files: {e}")
-
+        print(f"Error compiling LaTeX: {e}")
 
 # Función principal
 def main():
@@ -470,12 +465,12 @@ def main():
             # Agregar rutas de gráficos según la opción seleccionada
             if opcion in ["1", "3"]:
                 time_series_output_path = os.path.join(output_directory, f"time_series_plot_{sheet_name}.pgf")
-                generate_time_series_tikz(columnas_df, x_column, y_column, time_series_output_path)
+                generate_time_series_pgf(columnas_df, x_column, y_column, time_series_output_path)
                 section_info['charts'].append(time_series_output_path)
                 
             if opcion in ["2", "3"]:
                 bar_chart_output_path = os.path.join(output_directory, f"bar_chart_plot_{sheet_name}.pgf")
-                generate_bar_chart_tikz(columnas_df, x_column, y_column, bar_chart_output_path)
+                generate_bar_chart_pgf(columnas_df, x_column, y_column, bar_chart_output_path)
                 section_info['charts'].append(bar_chart_output_path)
             
             database_sections[database_name].append(section_info)
