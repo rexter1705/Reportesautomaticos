@@ -305,12 +305,17 @@ def generate_report():
         )
 
         if updated_latex_path and os.path.exists(updated_latex_path):
-            compile_latex(updated_latex_path, output_directory)
-            return jsonify({
-                'success': True, 
-                'output_path': output_directory,
-                'pgf_files': pgf_files_created
-            })
+            zip_path = compile_latex(updated_latex_path, pgf_files_created, output_directory)
+            if zip_path and os.path.exists(zip_path):
+                return jsonify({
+                    'success': True, 
+                    'output_path': zip_path,
+                    'message': 'Reporte generado y comprimido exitosamente'
+                })
+            else:
+                error_msg = "No se pudo crear el archivo ZIP del reporte"
+                print(error_msg)
+                return jsonify({'error': error_msg}), 500
         else:
             error_msg = "No se pudo actualizar o encontrar el archivo LaTeX generado"
             print(error_msg)
@@ -322,6 +327,6 @@ def generate_report():
         import traceback
         print(traceback.format_exc())
         return jsonify({'error': error_msg}), 500
-
+    
 if __name__ == '__main__':
     app.run(port=5000)
