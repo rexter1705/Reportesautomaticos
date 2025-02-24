@@ -402,9 +402,11 @@ def compile_latex(updated_latex_path, chart_paths, output_directory):
                     zipf.write(file, os.path.basename(file))
         print(f"ZIP file successfully created at: {zip_filename}")
         
+        return zip_filename  # Devuelve la ruta del archivo ZIP
+        
     except Exception as e:
         print(f"Error processing files: {e}")
-
+        return None
 
 # Función principal
 def main():
