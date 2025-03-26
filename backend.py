@@ -80,29 +80,14 @@ def generate_bar_chart_tikz(df, x_column, y_column, output_filename):
 def identificar_maximos_minimos(df, y_column, x_column):
     max_value = df[y_column].max()
     min_value = df[y_column].min()
-    mean_value = df[y_column].mean()
-    median_value = df[y_column].median()
-    std_dev = df[y_column].std()
-    variance = df[y_column].var()
-    skewness = df[y_column].skew()
-    kurtosis = df[y_column].kurt()
-
-    # Valores de x correspondientes a los extremos
+    
+    # Encontrar los valores de x correspondientes
     max_x = df[df[y_column] == max_value][x_column].iloc[0]
     min_x = df[df[y_column] == min_value][x_column].iloc[0]
+    
+    return {'max': max_value, 'min': min_value, 'max_x': max_x, 'min_x': min_x}
 
-    return {
-        'max': max_value,
-        'min': min_value,
-        'max_x': max_x,
-        'min_x': min_x,
-        'media': mean_value,
-        'mediana': median_value,
-        'desviacion_estandar': std_dev,
-        'varianza': variance,
-        'asimetria': skewness,
-        'curtosis': kurtosis
-    }
+
 
 # Función para actualizar el archivo LaTeX
 def update_latex_file(latex_template_path, chart_paths, output_directory, database_sections):
@@ -110,75 +95,66 @@ def update_latex_file(latex_template_path, chart_paths, output_directory, databa
         with open(latex_template_path, 'r') as file:
             latex_content = file.read()
 
-        # Paquetes necesarios
+        # Asegurarse de que los paquetes necesarios estén incluidos
         packages_to_include = [
             "\\usepackage{multicol}",
-            "\\usepackage{adjustbox}",
-            "\\usepackage{graphicx}"  # Para incluir imágenes
+            "\\usepackage{adjustbox}"
         ]
-
-        # Insertar paquetes solo si no están presentes
         for package in packages_to_include:
             if package not in latex_content:
                 latex_content = latex_content.replace("\\documentclass", f"{package}\n\\documentclass")
 
         # Generar contenido organizado por base de datos
         content_by_database = ""
-
+        
         for database_name, sections in database_sections.items():
-            content_by_database += f"\n\\section*{{Análisis de {database_name}}}\n"
-
+            content_by_database += f"\n\\section*{{Analisis de {database_name}}}\n"
+            
             for section_info in sections:
                 content_by_database += f"""
                 \\subsection*{{Hoja: {section_info['sheet_name']}}}
                 \\begin{{multicols}}{{2}}
-                \\noindent \\textbf{{Análisis Estadistico:}} \\\\
-                \\begin{{itemize}}
-                \\item Maximo: \\textbf{{{section_info['max_value']}}} en \\textbf{{{section_info['max_x']}}}
-                \\item Minimo: \\textbf{{{section_info['min_value']}}} en \\textbf{{{section_info['min_x']}}}
-                \\item Media: \\textbf{{{section_info['media']}}}
-                \\item Mediana: \\textbf{{{section_info['mediana']}}}
-                \\item Desviacion Estándar: \\textbf{{{section_info['desviacion_estandar']}}}
-                \\item Varianza: \\textbf{{{section_info['varianza']}}}
-                \\item Asimetria: \\textbf{{{section_info['asimetria']}}}
-                \\item Curtosis: \\textbf{{{section_info['curtosis']}}}
-                \\end{{itemize}}
+                \\noindent{{\\textbf{{Analisis:}}\\\\
+                El valor maximo observado es: \\textbf{{{section_info['max_value']}}} en \\textbf{{{section_info['max_x']}}}.\\\\
+                El valor minimo observado es: \\textbf{{{section_info['min_value']}}} en \\textbf{{{section_info['min_x']}}}.}}
 
                 \\columnbreak
+
                 \\begin{{center}}
                 """
-
-                # Insertar gráficos si existen
-                for chart_path in section_info.get('charts', []):
+                
+                for chart_path in section_info['charts']:
+                    # Extraer solo el nombre del archivo
                     chart_filename = os.path.basename(chart_path)
                     content_by_database += f"""
                     \\begin{{center}}
-                    \\includegraphics[width=0.9\\columnwidth]{{{chart_filename}}}
+                    \\resizebox{{\\columnwidth}}{{!}}{{%%%
+                        \\input{{{chart_filename}}}
+                    }}
                     \\end{{center}}
                     \\vspace{{5pt}}
                     """
-
+                
                 content_by_database += """
                 \\end{center}
                 \\end{multicols}
                 \\vspace{10pt}
                 """
 
-        # Reemplazar contenido en el template o añadir al final
+        # Reemplazar el marcador de contenido
         if "char" in latex_content:
             latex_content = latex_content.replace("char", content_by_database)
         else:
             latex_content += content_by_database
 
-        # Guardar el archivo actualizado
+        # Guardar el archivo LaTeX actualizado
         updated_latex_path = os.path.join(output_directory, "Updated_Prueba.tex")
         with open(updated_latex_path, 'w') as file:
             file.write(latex_content)
 
         return updated_latex_path
-
     except Exception as e:
-        print(f"Error al actualizar el archivo LaTeX: {e}")
+        print(f"Error updating LaTeX file: {e}")
         return None
 
 # Función para compilar el archivo LaTeX
