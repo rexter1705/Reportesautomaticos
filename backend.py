@@ -1,65 +1,279 @@
 from flask import Flask, jsonify, request
 import pandas as pd
 import os
-from URLS6 import (
-    generate_time_series_tikz,
-    generate_bar_chart_tikz,
-    identificar_maximos_minimos,
-    update_latex_file,
-    compile_latex,
-    ensure_directory
-)
+import matplotlib.pyplot as plt
+import zipfile
+from difflib import get_close_matches
+from datetime import datetime
+import matplotlib as mpl
+mpl.use("pgf")
 
 app = Flask(__name__)
+output_directory = os.path.join(os.path.expanduser("~"), "Desktop", "Reporte Generado")
 
-# Ruta donde se encuentran las plantillas LaTeX
-latex_templates_dir = r"C:\Users\fglruiz\OneDrive - Administradora del Fondo de Garantia MICOOPE\Escritorio\Investigacion_e_informes\Reportes\Plantilla para reportes\Plantilla"
+def ensure_directory(directory):
+    os.makedirs(directory, exist_ok=True)
+
+# Función para generar gráficos de series de tiempo
+def generate_time_series_tikz(df, x_column, y_column, output_filename):
+    try:
+        # Clean the data
+        df = df.dropna(subset=[x_column, y_column]).copy()
+        df[y_column] = pd.to_numeric(df[y_column], errors='coerce')
+        df = df.dropna(subset=[y_column])
+        df[x_column] = df[x_column].astype(str)
+
+        # Try to convert the X column to datetime and sort if possible
+        try:
+            df[x_column] = pd.to_datetime(df[x_column])
+            df = df.sort_values(by=x_column)
+            df[x_column] = df[x_column].dt.strftime('%Y-%m-%d')
+        except Exception:
+            pass  # If conversion fails, leave the column as is
+
+        # Create the plot
+        plt.figure(figsize=(12, 6))
+        plt.plot(df[x_column], df[y_column], marker='o', color='blue')
+        plt.xlabel(x_column)
+        plt.ylabel(y_column)
+        plt.title(f'Time Series: {y_column} vs {x_column}')
+        plt.grid(True)
+        plt.xticks(rotation=90)
+
+        # Save the plot as a TikZ file
+        plt.savefig(output_filename)
+        plt.close()
+
+        print(f"Time series TikZ plot saved to: {output_filename}")
+
+    except Exception as e:
+        print(f"Error generating time series TikZ plot: {e}")
+
+# Función para generar gráficos de barras
+def generate_bar_chart_tikz(df, x_column, y_column, output_filename):
+    try:
+        # Clean the data
+        df = df.dropna(subset=[x_column, y_column]).copy()
+        df[x_column] = df[x_column].astype(str)
+        df[y_column] = pd.to_numeric(df[y_column], errors='coerce')
+        df = df.dropna(subset=[y_column])
+
+        # Create the plot
+        plt.figure(figsize=(12, 6))
+        plt.bar(df[x_column], df[y_column], color='blue')
+        plt.xlabel(x_column)
+        plt.ylabel(y_column)
+        plt.title(f'Bar Chart: {y_column} vs {x_column}')
+        plt.grid(True)
+        plt.xticks(rotation=90)
+
+        # Save the plot as a TikZ file
+        plt.savefig(output_filename)
+        plt.close()
+
+        print(f"Bar chart TikZ plot saved to: {output_filename}")
+
+    except Exception as e:
+        print(f"Error generating bar chart TikZ plot: {e}")
+
+# Función para identificar máximos y mínimos
+def identificar_maximos_minimos(df, y_column, x_column):
+    max_value = df[y_column].max()
+    min_value = df[y_column].min()
+    mean_value = df[y_column].mean()
+    median_value = df[y_column].median()
+    std_dev = df[y_column].std()
+    variance = df[y_column].var()
+    skewness = df[y_column].skew()
+    kurtosis = df[y_column].kurt()
+
+    # Valores de x correspondientes a los extremos
+    max_x = df[df[y_column] == max_value][x_column].iloc[0]
+    min_x = df[df[y_column] == min_value][x_column].iloc[0]
+
+    return {
+        'max': max_value,
+        'min': min_value,
+        'max_x': max_x,
+        'min_x': min_x,
+        'media': mean_value,
+        'mediana': median_value,
+        'desviacion_estandar': std_dev,
+        'varianza': variance,
+        'asimetria': skewness,
+        'curtosis': kurtosis
+    }
+
+# Función para actualizar el archivo LaTeX
+def update_latex_file(latex_template_path, chart_paths, output_directory, database_sections):
+    try:
+        with open(latex_template_path, 'r') as file:
+            latex_content = file.read()
+
+        # Paquetes necesarios
+        packages_to_include = [
+            "\\usepackage{multicol}",
+            "\\usepackage{adjustbox}",
+            "\\usepackage{graphicx}"  # Para incluir imágenes
+        ]
+
+        # Insertar paquetes solo si no están presentes
+        for package in packages_to_include:
+            if package not in latex_content:
+                latex_content = latex_content.replace("\\documentclass", f"{package}\n\\documentclass")
+
+        # Generar contenido organizado por base de datos
+        content_by_database = ""
+
+        for database_name, sections in database_sections.items():
+            content_by_database += f"\n\\section*{{Análisis de {database_name}}}\n"
+
+            for section_info in sections:
+                content_by_database += f"""
+                \\subsection*{{Hoja: {section_info['sheet_name']}}}
+                \\begin{{multicols}}{{2}}
+                \\noindent \\textbf{{Análisis Estadistico:}} \\\\
+                \\begin{{itemize}}
+                \\item Maximo: \\textbf{{{section_info['max_value']}}} en \\textbf{{{section_info['max_x']}}}
+                \\item Minimo: \\textbf{{{section_info['min_value']}}} en \\textbf{{{section_info['min_x']}}}
+                \\item Media: \\textbf{{{section_info['media']}}}
+                \\item Mediana: \\textbf{{{section_info['mediana']}}}
+                \\item Desviacion Estándar: \\textbf{{{section_info['desviacion_estandar']}}}
+                \\item Varianza: \\textbf{{{section_info['varianza']}}}
+                \\item Asimetria: \\textbf{{{section_info['asimetria']}}}
+                \\item Curtosis: \\textbf{{{section_info['curtosis']}}}
+                \\end{{itemize}}
+
+                \\columnbreak
+                \\begin{{center}}
+                """
+
+                # Insertar gráficos si existen
+                for chart_path in section_info.get('charts', []):
+                    chart_filename = os.path.basename(chart_path)
+                    content_by_database += f"""
+                    \\begin{{center}}
+                    \\includegraphics[width=0.9\\columnwidth]{{{chart_filename}}}
+                    \\end{{center}}
+                    \\vspace{{5pt}}
+                    """
+
+                content_by_database += """
+                \\end{center}
+                \\end{multicols}
+                \\vspace{10pt}
+                """
+
+        # Reemplazar contenido en el template o añadir al final
+        if "char" in latex_content:
+            latex_content = latex_content.replace("char", content_by_database)
+        else:
+            latex_content += content_by_database
+
+        # Guardar el archivo actualizado
+        updated_latex_path = os.path.join(output_directory, "Updated_Prueba.tex")
+        with open(updated_latex_path, 'w') as file:
+            file.write(latex_content)
+
+        return updated_latex_path
+
+    except Exception as e:
+        print(f"Error al actualizar el archivo LaTeX: {e}")
+        return None
+
+# Función para compilar el archivo LaTeX
+def compile_latex(updated_latex_path, chart_paths, output_directory):
+    try:
+        # Leer el contenido del archivo LaTeX actualizado
+        with open(updated_latex_path, 'r') as file:
+            latex_content = file.read()
+        
+        # Generar el nombre del nuevo archivo .tex con timestamp
+        current_time = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+        output_tex_name = f"main.tex"
+        output_directory = output_directory.replace('\\', '/')
+        os.chdir(output_directory)
+        output_tex_path = os.path.join(output_directory, output_tex_name)
+        
+        # Guardar el contenido en un nuevo archivo .tex
+        with open(output_tex_path, 'w') as file:
+            file.write(latex_content)
+        
+        print(f"LaTeX file successfully saved at: {output_tex_path}")
+        
+        # Crear el archivo ZIP con el .tex y los gráficos
+        zip_filename = os.path.join(output_directory, f"output_files_{current_time}.zip")
+        with zipfile.ZipFile(zip_filename, 'w') as zipf:
+            files_to_zip = [output_tex_path] + chart_paths
+            for file in files_to_zip:
+                if os.path.exists(file):
+                    zipf.write(file, os.path.basename(file))
+        print(f"ZIP file successfully created at: {zip_filename}")
+        
+        return zip_filename  # Devuelve la ruta del archivo ZIP
+        
+    except Exception as e:
+        print(f"Error processing files: {e}")
+        return None
+
+
+# Variable global para almacenar la ruta de la carpeta de plantillas
+carpeta_plantillas = None
+
+@app.route('/set-template-folder', methods=['POST'])
+def set_template_folder():
+    global carpeta_plantillas
+    data = request.json
+    carpeta_plantillas = data.get('folder_path')
+    if not carpeta_plantillas or not os.path.exists(carpeta_plantillas):
+        return jsonify({'error': "La carpeta especificada no existe."}), 404
+    return jsonify({'success': True, 'message': f"Carpeta de plantillas configurada: {carpeta_plantillas}"})
 
 @app.route('/templates', methods=['GET'])
 def get_templates():
-    try:
-        # Imprimir la ruta para depuración
-        print(f"Buscando plantillas en: {latex_templates_dir}")
-        
-        # Verificar si el directorio existe
-        if not os.path.exists(latex_templates_dir):
-            print(f"El directorio no existe: {latex_templates_dir}")
-            # Intentar crear el directorio
-            os.makedirs(latex_templates_dir, exist_ok=True)
-            return jsonify({'error': f"No se encontró el directorio: {latex_templates_dir}"}), 404
+    global carpeta_plantillas
+    if not carpeta_plantillas:
+        return jsonify({'error': "No se ha seleccionado una carpeta de plantillas."}), 404
 
+    try:
         templates = []
-        for file in os.listdir(latex_templates_dir):
+        for file in os.listdir(carpeta_plantillas):
             if file.endswith('.tex'):
-                template_path = os.path.join(latex_templates_dir, file)
-                print(f"Encontrada plantilla: {template_path}")
+                template_path = os.path.join(carpeta_plantillas, file)
                 templates.append({
                     'name': file,
                     'path': template_path
                 })
         
         if not templates:
-            print("No se encontraron archivos .tex en el directorio")
             return jsonify({'error': "No se encontraron archivos .tex en el directorio"}), 404
         
-        print(f"Plantillas encontradas: {templates}")    
         return jsonify(templates)
     except Exception as e:
-        print(f"Error al buscar plantillas: {str(e)}")
         return jsonify({'error': f"Error al buscar plantillas: {str(e)}"}), 500
+
     
+# Variable global para almacenar la ruta de la carpeta de bases de datos
+carpeta_bases_datos = None
+
+@app.route('/set-database-folder', methods=['POST'])
+def set_database_folder():
+    global carpeta_bases_datos
+    data = request.json
+    carpeta_bases_datos = data.get('folder_path')
+    if not carpeta_bases_datos or not os.path.exists(carpeta_bases_datos):
+        return jsonify({'error': "La carpeta especificada no existe."}), 404
+    return jsonify({'success': True, 'message': f"Carpeta de bases de datos configurada: {carpeta_bases_datos}"})
+
 @app.route('/databases', methods=['GET'])
 def get_databases():
+    global carpeta_bases_datos
+    if not carpeta_bases_datos:
+        return jsonify({'error': "No se ha seleccionado una carpeta de bases de datos."}), 404
+
     try:
-        # Directorio de las bases de datos
-        desktop_path = os.path.join(os.path.expanduser('~'), 'Desktop')
-        base_path = os.path.join(desktop_path, 'Bases de datos para reportes')
-        
-        if not os.path.exists(base_path):
-            return jsonify({'error': "No se encontró la carpeta 'Bases de datos para reportes'."}), 404
-        
         databases = []
-        for root, _, files in os.walk(base_path):
+        for root, _, files in os.walk(carpeta_bases_datos):
             for file in files:
                 if file.lower().endswith(('.xls', '.xlsx')):
                     databases.append({'name': file, 'path': os.path.join(root, file)})
@@ -138,7 +352,7 @@ def generate_report():
         data = request.json
         template_path = data['template_path']
         decisions = data['decisions']
-        output_directory = data.get('output_directory', r"C:\Users\fglruiz\Desktop\Investigacion_e_informes\Reportes\Automatizados\Pruebas")
+        output_directory = os.path.join(os.path.expanduser("~"), "Desktop", "Reporte Generado")
         
         print(f"Iniciando generación de reporte con:")
         print(f"Template: {template_path}")

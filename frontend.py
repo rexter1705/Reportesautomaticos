@@ -2,7 +2,10 @@ import sys
 import requests
 from PyQt5.QtWidgets import (
     QApplication, QMainWindow, QStackedWidget, QVBoxLayout, QLabel,
-    QPushButton, QListWidget, QListWidgetItem, QWidget, QMessageBox, QHBoxLayout,  QComboBox, QTableWidget, QTableWidgetItem, QLineEdit, QHeaderView, QCheckBox, QTextEdit,)
+    QPushButton, QListWidget, QListWidgetItem, QWidget, QMessageBox, QHBoxLayout, 
+    QComboBox, QTableWidget, QTableWidgetItem, QLineEdit, QHeaderView, QCheckBox, 
+    QTextEdit, QFileDialog
+)
 from PyQt5.QtCore import Qt
 import pandas as pd
 from openpyxl import load_workbook
@@ -15,13 +18,19 @@ class FirstPage(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.layout = QVBoxLayout()
+        
+        # Botón para seleccionar la carpeta de plantillas
+        self.select_folder_button = QPushButton("Seleccionar Carpeta de Plantillas")
+        self.select_folder_button.clicked.connect(self.select_template_folder)
+        
         self.list_widget = QListWidget()
         self.next_button = QPushButton("Siguiente")
-        self.status_label = QLabel("Cargando plantillas...")
+        self.status_label = QLabel("Selecciona una carpeta de plantillas para comenzar.")
         
         # Añadir diccionario para almacenar las plantillas
         self.templates = {}  # Para almacenar {nombre: ruta}
 
+        self.layout.addWidget(self.select_folder_button)
         self.layout.addWidget(QLabel("Selecciona una Plantilla:"))
         self.layout.addWidget(self.list_widget)
         self.layout.addWidget(self.next_button)
@@ -29,16 +38,37 @@ class FirstPage(QWidget):
         self.setLayout(self.layout)
 
         self.next_button.clicked.connect(self.go_to_next_page)
-        self.load_templates()
+
+    def select_template_folder(self):
+        """Permite al usuario seleccionar la carpeta de plantillas."""
+        folder_path = QFileDialog.getExistingDirectory(self, "Seleccionar Carpeta de Plantillas", os.path.expanduser("~"), QFileDialog.ShowDirsOnly)
+        
+        if folder_path:
+            # Verificar si la carpeta contiene la subcarpeta "Plantilla para reportes"
+            default_folder = os.path.join(folder_path, "Plantilla para reportes")
+            if os.path.exists(default_folder):
+                folder_path = default_folder
+            
+            # Enviar la ruta de la carpeta al backend
+            response = requests.post(f"{BACKEND_URL}/set-template-folder", json={'folder_path': folder_path})
+            
+            if response.status_code == 200:
+                self.status_label.setText(f"Carpeta seleccionada: {folder_path}")
+                self.load_templates()
+            else:
+                self.status_label.setText("Error al seleccionar la carpeta de plantillas.")
+                QMessageBox.warning(self, "Error", "No se pudo configurar la carpeta de plantillas.")
 
     def load_templates(self):
+        """Carga las plantillas desde la carpeta seleccionada."""
         try:
             response = requests.get(f"{BACKEND_URL}/templates")
             if response.status_code == 200:
                 templates = response.json()
-                for template in templates:
-                    self.templates[template["name"]] = template["path"]
-                    self.list_widget.addItem(template["name"])
+                self.templates = {template["name"]: template["path"] for template in templates}
+                self.list_widget.clear()
+                for template_name in self.templates:
+                    self.list_widget.addItem(template_name)
                 self.status_label.setText("Plantillas cargadas correctamente.")
             else:
                 self.status_label.setText("Error al cargar plantillas.")
@@ -59,13 +89,17 @@ class FirstPage(QWidget):
             self.parent().setCurrentIndex(1)
         else:
             QMessageBox.warning(self, "Advertencia", "Por favor, selecciona una plantilla.")
-
+            
 class SecondPage(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.layout = QVBoxLayout()
         
-        # Añadir barra de búsqueda
+        # Botón para seleccionar la carpeta de bases de datos
+        self.select_folder_button = QPushButton("Seleccionar Carpeta de Bases de Datos")
+        self.select_folder_button.clicked.connect(self.select_database_folder)
+        
+        # Barra de búsqueda
         self.search_layout = QHBoxLayout()
         self.search_label = QLabel("Buscar:")
         self.search_input = QLineEdit()
@@ -77,9 +111,10 @@ class SecondPage(QWidget):
         self.list_widget = QListWidget()
         self.back_button = QPushButton("Regresar")
         self.next_button = QPushButton("Seleccionar Bases de Datos")
-        self.status_label = QLabel("Cargando bases de datos...")
+        self.status_label = QLabel("Selecciona una carpeta de bases de datos para comenzar.")
 
         # Añadir widgets al layout principal
+        self.layout.addWidget(self.select_folder_button)
         self.layout.addLayout(self.search_layout)
         self.layout.addWidget(QLabel("Selecciona las Bases de Datos:"))
         self.layout.addWidget(self.list_widget)
@@ -99,20 +134,31 @@ class SecondPage(QWidget):
         
         # Conectar el evento de cambio de estado de las casillas
         self.list_widget.itemChanged.connect(self.on_item_changed)
-        
-        # Cargar bases de datos desde el backend
-        self.load_databases()
 
-    def on_item_changed(self, item):
-        """Actualiza el estado global de las casillas cuando cambia una selección."""
-        self.checked_states[item.text()] = item.checkState()
+    def select_database_folder(self):
+        """Permite al usuario seleccionar la carpeta de bases de datos."""
+        folder_path = QFileDialog.getExistingDirectory(self, "Seleccionar Carpeta de Bases de Datos", os.path.expanduser("~"), QFileDialog.ShowDirsOnly)
+        
+        if folder_path:
+            # Enviar la ruta de la carpeta al backend
+            response = requests.post(f"{BACKEND_URL}/set-database-folder", json={'folder_path': folder_path})
+            
+            if response.status_code == 200:
+                self.status_label.setText(f"Carpeta seleccionada: {folder_path}")
+                self.load_databases()
+            else:
+                self.status_label.setText("Error al seleccionar la carpeta de bases de datos.")
+                QMessageBox.warning(self, "Error", "No se pudo configurar la carpeta de bases de datos.")
 
     def load_databases(self):
+        """Carga las bases de datos desde la carpeta seleccionada."""
         try:
             response = requests.get(f"{BACKEND_URL}/databases")
             if response.status_code == 200:
                 databases = response.json()
                 self.all_databases = databases
+                self.list_widget.clear()
+                self.checked_states = {}
                 for db in databases:
                     full_text = f"{db['name']} ({db['path']})"
                     item = QListWidgetItem(full_text)
@@ -124,6 +170,10 @@ class SecondPage(QWidget):
                 self.status_label.setText("Error al cargar bases de datos.")
         except Exception as e:
             self.status_label.setText(f"Error: {e}")
+
+    def on_item_changed(self, item):
+        """Actualiza el estado global de las casillas cuando cambia una selección."""
+        self.checked_states[item.text()] = item.checkState()
 
     def filter_databases(self, text):
         """Filtra las bases de datos según el texto de búsqueda y mantiene las selecciones."""
@@ -506,7 +556,7 @@ class FinalPage(QWidget):
         self.output_label = QLabel("Directorio de salida:")
         
         # Directorio de salida por defecto
-        self.output_directory = r"C:\Users\fglruiz\Desktop\Investigacion_e_informes\Reportes\Automatizados\Pruebas"
+        self.output_directory = os.path.join(os.path.expanduser("~"), "Desktop", "Reporte Generado")
 
         # Configuración del layout
         self.layout.addWidget(self.summary_label)
@@ -680,6 +730,10 @@ class MainWindow(QMainWindow):
         self.stack.setCurrentIndex(4)
 
 if __name__ == "__main__":
+    app = QApplication(sys.argv)
+    window = MainWindow()
+    window.show()
+    sys.exit(app.exec_())
     app = QApplication(sys.argv)
     window = MainWindow()
     window.show()
