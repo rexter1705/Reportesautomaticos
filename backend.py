@@ -36,7 +36,7 @@ def generate_time_series_tikz(df, x_column, y_column, output_filename):
         plt.plot(df[x_column], df[y_column], marker='o', color='blue')
         plt.xlabel(x_column)
         plt.ylabel(y_column)
-        plt.title(f'Time Series: {y_column} vs {x_column}')
+        plt.title(f'Serie de tiempo')
         plt.grid(True)
         plt.xticks(rotation=90)
 
@@ -63,7 +63,7 @@ def generate_bar_chart_tikz(df, x_column, y_column, output_filename):
         plt.bar(df[x_column], df[y_column], color='blue')
         plt.xlabel(x_column)
         plt.ylabel(y_column)
-        plt.title(f'Bar Chart: {y_column} vs {x_column}')
+        plt.title(f'Gráfico de barras')
         plt.grid(True)
         plt.xticks(rotation=90)
 
@@ -86,8 +86,6 @@ def identificar_maximos_minimos(df, y_column, x_column):
     min_x = df[df[y_column] == min_value][x_column].iloc[0]
     
     return {'max': max_value, 'min': min_value, 'max_x': max_x, 'min_x': min_x}
-
-
 
 # Función para actualizar el archivo LaTeX
 def update_latex_file(latex_template_path, chart_paths, output_directory, database_sections):
@@ -191,7 +189,6 @@ def compile_latex(updated_latex_path, chart_paths, output_directory):
     except Exception as e:
         print(f"Error processing files: {e}")
         return None
-
 
 # Variable global para almacenar la ruta de la carpeta de plantillas
 carpeta_plantillas = None
