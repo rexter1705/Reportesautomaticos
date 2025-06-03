@@ -4,7 +4,7 @@ from PyQt5.QtWidgets import (
     QApplication, QMainWindow, QStackedWidget, QVBoxLayout, QLabel,
     QPushButton, QListWidget, QListWidgetItem, QWidget, QMessageBox, QHBoxLayout, 
     QComboBox, QTableWidget, QTableWidgetItem, QLineEdit, QHeaderView, QCheckBox, 
-    QTextEdit, QFileDialog
+    QTextEdit, QFileDialog, QTabWidget, QSpinBox, QGroupBox, QColorDialog, QDialog
 )
 from PyQt5.QtCore import Qt
 import pandas as pd
@@ -13,6 +13,56 @@ import xlrd
 import os
 
 BACKEND_URL = "http://127.0.0.1:5000"
+
+class InitialPage(QWidget):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.layout = QVBoxLayout()
+        
+        # Título
+        title_label = QLabel("Selecciona el tipo de reporte a generar:")
+        title_label.setStyleSheet("font-size: 14pt; font-weight: bold;")
+        self.layout.addWidget(title_label)
+        
+        # Botones para seleccionar tipo de reporte
+        self.latex_button = QPushButton("Reporte LaTeX")
+        self.word_button = QPushButton("Reporte Word")
+        
+        # Estilizar botones
+        button_style = """
+            QPushButton {
+                padding: 15px;
+                font-size: 12pt;
+                min-width: 200px;
+                margin: 10px;
+            }
+        """
+        self.latex_button.setStyleSheet(button_style)
+        self.word_button.setStyleSheet(button_style)
+        
+        # Agregar botones al layout
+        self.layout.addWidget(self.latex_button)
+        self.layout.addWidget(self.word_button)
+        
+        # Conectar eventos
+        self.latex_button.clicked.connect(self.select_latex)
+        self.word_button.clicked.connect(self.select_word)
+        
+        self.setLayout(self.layout)
+
+    def select_latex(self):
+        # Obtener referencia a MainWindow
+        main_window = self.parent().parent()
+        main_window.report_type = "latex"
+        # Ir a la página de selección de plantillas
+        self.parent().setCurrentIndex(1)
+
+    def select_word(self):
+        # Obtener referencia a MainWindow
+        main_window = self.parent().parent()
+        main_window.report_type = "word"
+        # Ir directamente a la página de selección de bases de datos
+        self.parent().setCurrentIndex(2)
 
 class FirstPage(QWidget):
     def __init__(self, parent=None):
@@ -81,14 +131,25 @@ class FirstPage(QWidget):
             template_name = selected_item.text()
             template_path = self.templates[template_name]
             
-            # Obtener referencia a MainWindow y guardar la ruta completa
-            main_window = self.parent().parent()
-            main_window.selected_template = template_path
+            # Enviar la plantilla seleccionada al backend
+            response = requests.post(f"{BACKEND_URL}/set-template", json={'template_path': template_path})
             
-            print(f"Plantilla seleccionada: {template_path}")  # Para depuración
-            self.parent().setCurrentIndex(1)
+            if response.status_code == 200:
+                # Obtener referencia a MainWindow y guardar la ruta completa
+                main_window = self.parent().parent()
+                main_window.selected_template = template_path
+                
+                print(f"Plantilla seleccionada: {template_path}")  # Para depuración
+                # Cambiar a la página de bases de datos (índice 2)
+                self.parent().setCurrentIndex(2)
+            else:
+                QMessageBox.warning(self, "Error", "No se pudo configurar la plantilla seleccionada.")
         else:
             QMessageBox.warning(self, "Advertencia", "Por favor, selecciona una plantilla.")
+
+    def go_to_previous_page(self):
+        # Corregir el índice para volver a la página anterior (índice 0)
+        self.parent().setCurrentIndex(0)
             
 class SecondPage(QWidget):
     def __init__(self, parent=None):
@@ -125,7 +186,6 @@ class SecondPage(QWidget):
 
         # Botones
         self.back_button.clicked.connect(self.go_to_previous_page)
-        self.next_button.clicked.connect(self.store_selected_databases)
 
         # Lista para almacenar todas las bases de datos
         self.all_databases = []
@@ -202,7 +262,9 @@ class SecondPage(QWidget):
         if selected_databases:
             # Obtener la referencia a MainWindow
             main_window = self.parent().parent()
-            main_window.selected_databases = selected_databases
+            main_window.selected_databases = selected_databases.copy()  # Hacer una copia de la lista
+            print(f"Bases guardadas en MainWindow: {main_window.selected_databases}")  # Depuración
+            
             QMessageBox.information(
                 self, 
                 "Bases Seleccionadas", 
@@ -210,11 +272,13 @@ class SecondPage(QWidget):
             )
             # Llamar a start_iteration desde MainWindow
             main_window.start_iteration()
+            # Cambiar a la página de selección de hoja (índice 3)
+            self.parent().setCurrentIndex(3)
         else:
             QMessageBox.warning(self, "Advertencia", "Por favor, selecciona al menos una base de datos.")
 
     def go_to_previous_page(self):
-        self.parent().setCurrentIndex(0)
+        self.parent().setCurrentIndex(1)  # Volver a la página de plantillas
 
 class ThirdPage(QWidget):
     def __init__(self, parent=None):
@@ -349,7 +413,7 @@ class ThirdPage(QWidget):
             self.column_names = [str(col) for col in df.columns.tolist()]
             
             # Configurar la cuarta página con los nombres de las columnas
-            fourth_page = self.parent().widget(3)  # Obtener la cuarta página
+            fourth_page = self.parent().widget(4)  # Corregido el índice
             fourth_page.load_sheet(
                 self.selected_file,
                 self.selected_sheet,
@@ -357,19 +421,20 @@ class ThirdPage(QWidget):
             )
             
             QMessageBox.information(
-                self, "Fila Seleccionada", 
+                self, 
+                "Fila Seleccionada", 
                 f"Fila de encabezados seleccionada: {header_row + 1}\n"
                 f"Columnas detectadas: {', '.join(self.column_names)}"
             )
             
             # Navegar a la cuarta página
-            self.parent().setCurrentIndex(3)
+            self.parent().setCurrentIndex(4)  # Corregido el índice
             
         except ValueError:
             QMessageBox.warning(self, "Error", "Por favor ingresa un número válido.")
 
     def go_to_previous_page(self):
-        self.parent().setCurrentIndex(1)
+        self.parent().setCurrentIndex(2)
 
     def show_table_from_data(self, columns, data):
         """Muestra los datos recibidos del backend en la tabla."""
@@ -414,6 +479,7 @@ class FourthPage(QWidget):
         self.y_column_dropdown = QComboBox()
         self.save_button = QPushButton("Guardar Selección")
         self.back_button = QPushButton("Regresar")
+        self.edit_graph_button = QPushButton("Editar Gráfico")
 
         # Configuración del layout
         self.layout.addWidget(self.sheet_label)
@@ -427,11 +493,13 @@ class FourthPage(QWidget):
         self.layout.addWidget(QLabel("Columna para el eje Y:"))
         self.layout.addWidget(self.y_column_dropdown)
         self.layout.addWidget(self.save_button)
+        self.layout.addWidget(self.edit_graph_button)
         self.layout.addWidget(self.back_button)
         self.setLayout(self.layout)
 
         # Eventos
         self.save_button.clicked.connect(self.save_selections)
+        self.edit_graph_button.clicked.connect(self.edit_graph)
         self.back_button.clicked.connect(self.go_to_previous_page)
 
         # Variables
@@ -439,6 +507,7 @@ class FourthPage(QWidget):
         self.selected_file = None
         self.selected_graphs = []
         self.selected_columns = {}
+        self.graph_options = None
 
     def load_sheet(self, file_path, sheet_name, column_names):
         """Carga la información de la hoja y configura los dropdowns de columnas."""
@@ -498,6 +567,13 @@ class FourthPage(QWidget):
         # Ajustar el ancho de las columnas
         self.table_preview.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
 
+    def edit_graph(self):
+        dialog = GraphEditorDialog(self)
+        if dialog.exec_() == QDialog.Accepted:
+            self.graph_options = dialog.get_options()
+            QMessageBox.information(self, "Opciones Guardadas", 
+                                  "Las opciones de personalización han sido guardadas.")
+
     def save_selections(self):
         """Guarda las selecciones realizadas para los gráficos y columnas."""
         # Validar que al menos un gráfico esté seleccionado
@@ -520,27 +596,29 @@ class FourthPage(QWidget):
             return
 
         # Guardar selección de columnas
-        self.selected_columns = {"x_column": x_column, "y_column": y_column}
+        self.selected_columns = {
+            "x_column": x_column, 
+            "y_column": y_column,
+            "graph_options": self.graph_options
+        }
 
-        QMessageBox.information(
-            self, "Selecciones Guardadas",
-            f"Gráficos seleccionados: {', '.join(self.selected_graphs)}\n"
-            f"Columnas seleccionadas: X = {x_column}, Y = {y_column}"
-        )
+        # Obtener referencia a MainWindow y guardar las decisiones
+        main_window = self.parent().parent()
+        main_window.save_graph_decisions()
 
     def go_to_previous_page(self):
-        self.parent().setCurrentIndex(2)
+        self.parent().setCurrentIndex(3)
 
     def clear_selections(self):
-        """Limpia las selecciones anteriores."""
+        """Limpia las selecciones de gráficos y columnas pero mantiene la hoja seleccionada."""
         self.x_column_dropdown.clear()
         self.y_column_dropdown.clear()
         self.bar_chart_checkbox.setChecked(False)
         self.time_series_checkbox.setChecked(False)
-        self.table_preview.setRowCount(0)
-        self.table_preview.setColumnCount(0)
         self.selected_graphs = []
         self.selected_columns = {}
+        self.graph_options = None
+        # No limpiamos self.selected_sheet ni self.selected_file
 
 class FinalPage(QWidget):
     def __init__(self, parent=None):
@@ -553,6 +631,7 @@ class FinalPage(QWidget):
         self.summary_text.setReadOnly(True)
         self.generate_button = QPushButton("Generar Reporte")
         self.back_button = QPushButton("Regresar")
+        self.clear_button = QPushButton("Limpiar Selecciones")
         self.output_label = QLabel("Directorio de salida:")
         
         # Directorio de salida por defecto
@@ -564,11 +643,13 @@ class FinalPage(QWidget):
         self.layout.addWidget(self.output_label)
         self.layout.addWidget(self.generate_button)
         self.layout.addWidget(self.back_button)
+        self.layout.addWidget(self.clear_button)
         self.setLayout(self.layout)
 
         # Eventos
         self.generate_button.clicked.connect(self.generate_report)
         self.back_button.clicked.connect(self.go_to_previous_page)
+        self.clear_button.clicked.connect(self.clear_all_selections)
 
         # Variables
         self.decisions = []
@@ -597,9 +678,13 @@ class FinalPage(QWidget):
     def generate_report(self):
         """Genera el reporte basado en las decisiones tomadas."""
         try:
+            main_window = self.parent().parent()
+            report_type = main_window.report_type
+
             response = requests.post(f"{BACKEND_URL}/generate-report", json={
-                'template_path': self.template_path,
+                'template_path': self.template_path if report_type == "latex" else None,
                 'decisions': self.decisions,
+                'report_type': report_type,
                 'output_directory': self.output_directory
             })
             
@@ -608,7 +693,9 @@ class FinalPage(QWidget):
                 QMessageBox.information(
                     self, 
                     "Reporte Generado", 
-                    f"El reporte se ha generado correctamente en:\n{data['output_path']}"
+                    f"El reporte se ha generado correctamente en:\n{data['output_path']}\n\n" +
+                    ("Para el reporte Word, copia el contenido del archivo .txt y las imágenes en un documento de Word." 
+                     if report_type == "word" else "")
                 )
             else:
                 error_msg = response.json().get('error', 'Error desconocido')
@@ -617,39 +704,315 @@ class FinalPage(QWidget):
             QMessageBox.critical(self, "Error", f"Ocurrió un error al generar el reporte: {str(e)}")
 
     def go_to_previous_page(self):
-        self.parent().setCurrentIndex(3)
+        """Regresa a la página anterior y limpia solo las decisiones guardadas."""
+        try:
+            # Obtener referencia a MainWindow
+            main_window = self.parent().parent()
+            
+            # Limpiar solo las decisiones guardadas
+            main_window.database_decisions = []
+            main_window.current_database_index = 0
+            
+            # Limpiar el resumen
+            self.summary_text.clear()
+            
+            # Volver a la página anterior (cuarta página)
+            self.parent().setCurrentIndex(4)
+            
+        except Exception as e:
+            print(f"Error al limpiar decisiones: {e}")
+            # Aún así intentar volver a la página anterior
+            self.parent().setCurrentIndex(4)
+
+    def clear_all_selections(self):
+        """Limpia todas las selecciones y reinicia la aplicación."""
+        try:
+            # Obtener referencia a MainWindow
+            main_window = self.parent().parent()
+            
+            # Limpiar todas las variables de selección
+            main_window.report_type = None
+            main_window.selected_template = None
+            main_window.selected_databases = []
+            main_window.database_decisions = []
+            main_window.current_database_index = 0
+            
+            # Limpiar las selecciones en todas las páginas
+            main_window.first_page.list_widget.clear()
+            main_window.second_page.list_widget.clear()
+            main_window.second_page.checked_states = {}
+            main_window.third_page.clear_selections()
+            main_window.fourth_page.clear_selections()
+            
+            # Limpiar el resumen
+            self.summary_text.clear()
+            
+            # Mostrar mensaje de confirmación
+            QMessageBox.information(
+                self,
+                "Selecciones Limpiadas",
+                "Todas las selecciones han sido limpiadas. La aplicación se reiniciará."
+            )
+            
+            # Volver a la página inicial
+            self.parent().setCurrentIndex(0)
+            
+        except Exception as e:
+            print(f"Error al limpiar selecciones: {e}")
+            QMessageBox.warning(
+                self,
+                "Error",
+                "Hubo un problema al limpiar las selecciones. Por favor, intente nuevamente."
+            )
+
+class GraphEditorDialog(QDialog):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Editor de Gráficos")
+        self.setModal(True)
+        self.setMinimumWidth(600)
+        
+        layout = QVBoxLayout()
+        
+        # Crear pestañas
+        self.tabs = QTabWidget()
+        
+        # Pestaña de Colores
+        colors_tab = QWidget()
+        colors_layout = QVBoxLayout()
+        
+        self.color_pickers = {}
+        for color_type in ['line', 'bar', 'point', 'grid']:
+            color_layout = QHBoxLayout()
+            color_layout.addWidget(QLabel(f"Color de {color_type}:"))
+            color_picker = QPushButton()
+            color_picker.setFixedSize(50, 20)
+            color_picker.clicked.connect(lambda checked, t=color_type: self.choose_color(t))
+            self.color_pickers[color_type] = color_picker
+            color_layout.addWidget(color_picker)
+            colors_layout.addLayout(color_layout)
+        
+        colors_tab.setLayout(colors_layout)
+        
+        # Pestaña de Formato de Datos
+        data_tab = QWidget()
+        data_layout = QVBoxLayout()
+        
+        self.data_format = QComboBox()
+        self.data_format.addItems(['Número', 'Porcentaje', 'Moneda'])
+        data_layout.addWidget(QLabel("Formato de datos:"))
+        data_layout.addWidget(self.data_format)
+        
+        self.decimal_places = QSpinBox()
+        self.decimal_places.setRange(0, 10)
+        data_layout.addWidget(QLabel("Decimales:"))
+        data_layout.addWidget(self.decimal_places)
+        
+        data_tab.setLayout(data_layout)
+        
+        # Pestaña de Etiquetas
+        labels_tab = QWidget()
+        labels_layout = QVBoxLayout()
+        
+        self.show_values = QCheckBox("Mostrar valores")
+        self.show_points = QCheckBox("Mostrar puntos")
+        self.label_rotation = QSpinBox()
+        self.label_rotation.setRange(0, 90)
+        self.label_rotation.setValue(45)
+        
+        labels_layout.addWidget(self.show_values)
+        labels_layout.addWidget(self.show_points)
+        labels_layout.addWidget(QLabel("Rotación de etiquetas:"))
+        labels_layout.addWidget(self.label_rotation)
+        
+        labels_tab.setLayout(labels_layout)
+        
+        # Pestaña de Ejes y Título
+        axes_tab = QWidget()
+        axes_layout = QVBoxLayout()
+        
+        self.x_label = QLineEdit()
+        self.y_label = QLineEdit()
+        self.title = QLineEdit()
+        
+        axes_layout.addWidget(QLabel("Etiqueta eje X:"))
+        axes_layout.addWidget(self.x_label)
+        axes_layout.addWidget(QLabel("Etiqueta eje Y:"))
+        axes_layout.addWidget(self.y_label)
+        axes_layout.addWidget(QLabel("Título:"))
+        axes_layout.addWidget(self.title)
+        
+        # Opciones de fuente
+        font_group = QGroupBox("Opciones de fuente")
+        font_layout = QVBoxLayout()
+        
+        self.font_family = QComboBox()
+        self.font_family.addItems(['serif', 'sans-serif', 'monospace'])
+        self.font_size = QSpinBox()
+        self.font_size.setRange(8, 24)
+        self.font_size.setValue(12)
+        self.font_bold = QCheckBox("Negrita")
+        self.font_italic = QCheckBox("Cursiva")
+        
+        font_layout.addWidget(QLabel("Familia de fuente:"))
+        font_layout.addWidget(self.font_family)
+        font_layout.addWidget(QLabel("Tamaño:"))
+        font_layout.addWidget(self.font_size)
+        font_layout.addWidget(self.font_bold)
+        font_layout.addWidget(self.font_italic)
+        
+        font_group.setLayout(font_layout)
+        axes_layout.addWidget(font_group)
+        
+        # Agregar opciones de grid
+        grid_group = QGroupBox("Opciones de Grid")
+        grid_layout = QVBoxLayout()
+        
+        self.show_grid = QCheckBox("Mostrar Grid")
+        self.grid_style = QComboBox()
+        self.grid_style.addItems(['-', '--', ':', '-.'])
+        self.grid_alpha = QSpinBox()
+        self.grid_alpha.setRange(0, 100)
+        self.grid_alpha.setValue(30)
+        
+        grid_layout.addWidget(self.show_grid)
+        grid_layout.addWidget(QLabel("Estilo de Grid:"))
+        grid_layout.addWidget(self.grid_style)
+        grid_layout.addWidget(QLabel("Transparencia:"))
+        grid_layout.addWidget(self.grid_alpha)
+        
+        grid_group.setLayout(grid_layout)
+        axes_layout.addWidget(grid_group)
+        
+        axes_tab.setLayout(axes_layout)
+        
+        # Agregar pestañas
+        self.tabs.addTab(colors_tab, "Colores")
+        self.tabs.addTab(data_tab, "Formato de Datos")
+        self.tabs.addTab(labels_tab, "Etiquetas")
+        self.tabs.addTab(axes_tab, "Ejes y Título")
+        
+        layout.addWidget(self.tabs)
+        
+        # Botones
+        buttons_layout = QHBoxLayout()
+        self.save_button = QPushButton("Guardar")
+        self.cancel_button = QPushButton("Cancelar")
+        
+        self.save_button.clicked.connect(self.accept)
+        self.cancel_button.clicked.connect(self.reject)
+        
+        buttons_layout.addWidget(self.save_button)
+        buttons_layout.addWidget(self.cancel_button)
+        
+        layout.addLayout(buttons_layout)
+        self.setLayout(layout)
+        
+        # Inicializar valores por defecto
+        self.set_default_values()
+
+    def set_default_values(self):
+        # Colores por defecto
+        default_colors = {
+            'line': '#1f77b4',
+            'bar': '#1f77b4',
+            'point': '#1f77b4',
+            'grid': '#cccccc'
+        }
+        for color_type, color in default_colors.items():
+            self.color_pickers[color_type].setStyleSheet(f"background-color: {color}")
+        
+        # Establecer valores por defecto para las etiquetas
+        self.show_values.setChecked(False)  # Desactivar mostrar valores por defecto
+        self.show_points.setChecked(False)  # Desactivar mostrar puntos por defecto
+        self.label_rotation.setValue(45)    # Rotación por defecto
+        
+        # Establecer valores por defecto para el grid
+        self.show_grid.setChecked(True)     # Activar grid por defecto
+        self.grid_style.setCurrentText('--')  # Estilo de grid por defecto
+        self.grid_alpha.setValue(30)        # Transparencia por defecto
+
+    def choose_color(self, color_type):
+        color = QColorDialog.getColor()
+        if color.isValid():
+            self.color_pickers[color_type].setStyleSheet(f"background-color: {color.name()}")
+
+    def get_options(self):
+        return {
+            'colors': {
+                'line': self.color_pickers['line'].styleSheet().split(': ')[1],
+                'bar': self.color_pickers['bar'].styleSheet().split(': ')[1],
+                'point': self.color_pickers['point'].styleSheet().split(': ')[1],
+                'grid': self.color_pickers['grid'].styleSheet().split(': ')[1]
+            },
+            'data_format': {
+                'y_axis': self.data_format.currentText().lower(),
+                'decimal_places': self.decimal_places.value()
+            },
+            'labels': {
+                'show_values': self.show_values.isChecked(),
+                'show_points': self.show_points.isChecked(),
+                'rotation': self.label_rotation.value(),
+                'font_size': 8  # Tamaño de fuente por defecto
+            },
+            'axes': {
+                'x_label': self.x_label.text(),
+                'y_label': self.y_label.text(),
+                'title': self.title.text(),
+                'title_font': {
+                    'family': self.font_family.currentText(),
+                    'size': self.font_size.value(),
+                    'weight': 'bold' if self.font_bold.isChecked() else 'normal',
+                    'style': 'italic' if self.font_italic.isChecked() else 'normal'
+                },
+                'label_font': {
+                    'family': self.font_family.currentText(),
+                    'size': self.font_size.value(),
+                    'weight': 'normal',
+                    'style': 'normal'
+                }
+            },
+            'grid': {
+                'show': self.show_grid.isChecked(),
+                'style': self.grid_style.currentText(),
+                'alpha': self.grid_alpha.value() / 100.0  # Convertir a decimal
+            }
+        }
 
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("Selector de Plantillas y Bases de Datos")
+        self.setWindowTitle("Generador de Reportes")
         self.setGeometry(100, 100, 800, 600)
 
         # Configuración de páginas
         self.stack = QStackedWidget()
+        self.initial_page = InitialPage(self.stack)
         self.first_page = FirstPage(self.stack)
         self.second_page = SecondPage(self.stack)
         self.third_page = ThirdPage(self.stack)
         self.fourth_page = FourthPage(self.stack)
         self.final_page = FinalPage(self.stack)
 
-        self.stack.addWidget(self.first_page)
-        self.stack.addWidget(self.second_page)
-        self.stack.addWidget(self.third_page)
-        self.stack.addWidget(self.fourth_page)
-        self.stack.addWidget(self.final_page)
+        # Añadir páginas en el orden correcto
+        self.stack.addWidget(self.initial_page)  # índice 0
+        self.stack.addWidget(self.first_page)    # índice 1
+        self.stack.addWidget(self.second_page)   # índice 2
+        self.stack.addWidget(self.third_page)    # índice 3
+        self.stack.addWidget(self.fourth_page)   # índice 4
+        self.stack.addWidget(self.final_page)    # índice 5
 
         self.setCentralWidget(self.stack)
 
         # Variables para almacenar selecciones
+        self.report_type = None
         self.selected_template = None
         self.selected_databases = []
         self.database_decisions = []
         self.current_database_index = 0
 
         # Conexión entre páginas
-        self.second_page.next_button.clicked.connect(self.start_iteration)
-        self.fourth_page.save_button.clicked.connect(self.save_graph_decisions)
+        self.second_page.next_button.clicked.connect(self.second_page.store_selected_databases)
 
     def save_graph_decisions(self):
         """Guarda las decisiones de gráficos y maneja la iteración de bases de datos."""
@@ -661,47 +1024,65 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, "Advertencia", "Por favor, selecciona los gráficos y columnas antes de continuar.")
             return
 
-        current_database = self.selected_databases[self.current_database_index]
-        database_path = current_database[current_database.find("(")+1:current_database.find(")")]
-        
-        # Crear o actualizar las decisiones para la base de datos actual
-        current_decision = {
-            'database': database_path,
-            'decisions': [{
-                'sheet': self.third_page.selected_sheet,
-                'header_row': self.third_page.selected_header_row,
-                'graphs': self.fourth_page.selected_graphs,
-                'columns': self.fourth_page.selected_columns
-            }]
-        }
-        
-        self.database_decisions.append(current_decision)
-        
-        # Verificar si hay más bases de datos para procesar
-        self.current_database_index += 1
-        if self.current_database_index < len(self.selected_databases):
-            # Cargar la siguiente base de datos
-            next_database = self.selected_databases[self.current_database_index]
-            database_path = next_database[next_database.find("(")+1:next_database.find(")")]
+        # Verificar que tenemos bases de datos seleccionadas
+        if not self.selected_databases:
+            QMessageBox.warning(self, "Error", "No hay bases de datos seleccionadas.")
+            return
+
+        try:
+            current_database = self.selected_databases[self.current_database_index]
+            database_path = current_database[current_database.find("(")+1:current_database.find(")")]
             
-            # Limpiar selecciones anteriores
-            self.third_page.clear_selections()
-            self.fourth_page.clear_selections()
+            # Crear o actualizar las decisiones para la base de datos actual
+            current_decision = {
+                'database': database_path,
+                'decisions': [{
+                    'sheet': self.third_page.selected_sheet,
+                    'header_row': self.third_page.selected_header_row,
+                    'graphs': self.fourth_page.selected_graphs,
+                    'columns': self.fourth_page.selected_columns
+                }]
+            }
             
-            # Cargar la siguiente base de datos en la tercera página
-            self.third_page.load_file(database_path)
+            self.database_decisions.append(current_decision)
             
-            # Volver a la tercera página
-            self.stack.setCurrentIndex(2)
-            
-            QMessageBox.information(
-                self,
-                "Siguiente Base de Datos",
-                f"Por favor, procese la siguiente base de datos:\n{next_database.split(' (')[0]}"
-            )
-        else:
-            # Si no hay más bases de datos, ir a la página final
-            self.go_to_final_page()
+            # Verificar si hay más bases de datos para procesar
+            if self.current_database_index + 1 < len(self.selected_databases):
+                # Incrementar el índice solo si hay más bases de datos
+                self.current_database_index += 1
+                
+                # Cargar la siguiente base de datos
+                next_database = self.selected_databases[self.current_database_index]
+                database_path = next_database[next_database.find("(")+1:next_database.find(")")]
+                
+                # Limpiar selecciones anteriores
+                self.third_page.clear_selections()
+                self.fourth_page.clear_selections()
+                
+                # Cargar la siguiente base de datos en la tercera página
+                self.third_page.load_file(database_path)
+                
+                # Volver a la tercera página
+                self.stack.setCurrentIndex(3)
+                
+                QMessageBox.information(
+                    self,
+                    "Siguiente Base de Datos",
+                    f"Por favor, procese la siguiente base de datos:\n{next_database.split(' (')[0]}"
+                )
+            else:
+                # Si no hay más bases de datos, ir a la página final
+                self.go_to_final_page()
+                
+        except IndexError as e:
+            print(f"Error de índice: {e}")
+            print(f"Bases de datos seleccionadas: {self.selected_databases}")
+            print(f"Índice actual: {self.current_database_index}")
+            QMessageBox.warning(self, "Error", "Hubo un problema al procesar las bases de datos. Por favor, intente nuevamente.")
+            # Reiniciar el proceso
+            self.current_database_index = 0
+            self.database_decisions = []
+            self.stack.setCurrentIndex(2)  # Volver a la página de selección de bases de datos
 
     def start_iteration(self):
         """Inicia la iteración de bases de datos seleccionadas."""
@@ -709,31 +1090,37 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, "Advertencia", "Por favor, selecciona al menos una base de datos.")
             return
 
+        print(f"Iniciando iteración con bases de datos: {self.selected_databases}")  # Depuración
+
         # Preparar para nueva iteración
         self.current_database_index = 0
         self.database_decisions = []
         
-        # Cargar el primer archivo
-        current_database = self.selected_databases[self.current_database_index]
-        database_name = current_database.split(" (")[0]
-        database_path = current_database[current_database.find("(")+1:current_database.find(")")]
-        
-        # Cargar el archivo en la tercera página
-        self.third_page.load_file(database_path)
-        
-        # Avanzar a la tercera página
-        self.stack.setCurrentIndex(2)
+        try:
+            # Cargar el primer archivo
+            current_database = self.selected_databases[self.current_database_index]
+            database_name = current_database.split(" (")[0]
+            database_path = current_database[current_database.find("(")+1:current_database.find(")")]
+            
+            # Cargar el archivo en la tercera página
+            self.third_page.load_file(database_path)
+            
+            # Avanzar a la tercera página
+            self.stack.setCurrentIndex(3)
+        except Exception as e:
+            print(f"Error en start_iteration: {e}")
+            QMessageBox.warning(self, "Error", "Hubo un problema al iniciar el proceso. Por favor, intente nuevamente.")
 
     def go_to_final_page(self):
         """Ir a la página final para revisar decisiones."""
-        self.final_page.load_decisions(self.selected_template, self.database_decisions)
-        self.stack.setCurrentIndex(4)
+        try:
+            self.final_page.load_decisions(self.selected_template, self.database_decisions)
+            self.stack.setCurrentIndex(5)  # Cambiar al índice 5 (FinalPage)
+        except Exception as e:
+            print(f"Error al ir a la página final: {e}")
+            QMessageBox.warning(self, "Error", "Hubo un problema al mostrar la página final. Por favor, intente nuevamente.")
 
 if __name__ == "__main__":
-    app = QApplication(sys.argv)
-    window = MainWindow()
-    window.show()
-    sys.exit(app.exec_())
     app = QApplication(sys.argv)
     window = MainWindow()
     window.show()
