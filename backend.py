@@ -206,7 +206,14 @@ class ReportGenerator:
 class DataAnalyzer:
     @staticmethod
     def get_max_min_values(df, y_column, x_column):
-        # Primero agrupamos y sumamos los valores
+        # Primero eliminamos las filas donde y_column es NaN
+        df = df.dropna(subset=[y_column])
+        
+        # Convertimos la columna Y a numérico y eliminamos cualquier valor NaN resultante
+        df[y_column] = pd.to_numeric(df[y_column], errors='coerce')
+        df = df.dropna(subset=[y_column])
+        
+        # Agrupamos y sumamos los valores
         df = df.groupby(x_column)[y_column].sum().reset_index()
         
         # Ahora obtenemos los valores máximos y mínimos de los datos agrupados

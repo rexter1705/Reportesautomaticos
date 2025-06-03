@@ -75,6 +75,7 @@ class FirstPage(QWidget):
         
         self.list_widget = QListWidget()
         self.next_button = QPushButton("Siguiente")
+        self.back_button = QPushButton("Regresar")
         self.status_label = QLabel("Selecciona una carpeta de plantillas para comenzar.")
         
         # Añadir diccionario para almacenar las plantillas
@@ -84,10 +85,12 @@ class FirstPage(QWidget):
         self.layout.addWidget(QLabel("Selecciona una Plantilla:"))
         self.layout.addWidget(self.list_widget)
         self.layout.addWidget(self.next_button)
+        self.layout.addWidget(self.back_button)
         self.layout.addWidget(self.status_label)
         self.setLayout(self.layout)
 
         self.next_button.clicked.connect(self.go_to_next_page)
+        self.back_button.clicked.connect(self.go_to_previous_page)
 
     def select_template_folder(self):
         """Permite al usuario seleccionar la carpeta de plantillas."""
@@ -148,7 +151,6 @@ class FirstPage(QWidget):
             QMessageBox.warning(self, "Advertencia", "Por favor, selecciona una plantilla.")
 
     def go_to_previous_page(self):
-        # Corregir el índice para volver a la página anterior (índice 0)
         self.parent().setCurrentIndex(0)
             
 class SecondPage(QWidget):
@@ -278,7 +280,15 @@ class SecondPage(QWidget):
             QMessageBox.warning(self, "Advertencia", "Por favor, selecciona al menos una base de datos.")
 
     def go_to_previous_page(self):
-        self.parent().setCurrentIndex(1)  # Volver a la página de plantillas
+        # Obtener referencia a MainWindow
+        main_window = self.parent().parent()
+        
+        # Si es un reporte Word, regresar a la página inicial (selección de reporte)
+        if main_window.report_type == "word":
+            self.parent().setCurrentIndex(0)
+        else:
+            # Si es un reporte LaTeX, regresar a la página de plantillas
+            self.parent().setCurrentIndex(1)
 
 class ThirdPage(QWidget):
     def __init__(self, parent=None):
